@@ -1,0 +1,6 @@
+{
+  "name": "ShaurmYAN",
+  "description": "ShaurmYAN - პრემიუმ კლასის საშაურმე თბილისში. საუკეთესო გემო, სქროლ-ანიმაციები და ადმინ პანელი შეკვეთების სამართავად.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
