@@ -8,7 +8,7 @@ export const INITIAL_MENU: MenuItem[] = [
     description: 'ჩვენი საფირმო შაურმა. წვნიანი, ნელ ცეცხლზე შემწვარი შერჩეული ხორცი, სპეციალური „იან“ სოუსი, ხრაშუნა კარტოფილი ფრი, ცოცხალი მწვანილი და საიდუმლო სანელებლები.',
     descriptionEn: 'Our signature giant shawarma. Juicy slow-roasted selected meat, special YAN house sauce, crispy french fries, fresh greens and secret Armenian-style spices.',
     price: 15.50,
-    image: 'https://images.unsplash.com/photo-1662116765994-4e2c918be177?auto=format&fit=crop&q=80&w=1200',
+    image: '/goliath-shaurma.png',
     category: 'special',
     spicyLevel: 1,
     popular: true,

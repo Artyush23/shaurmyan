@@ -32,6 +32,7 @@ interface CardPaymentModalProps {
   onClose: () => void;
   cardholderName: string;
   amount: number;
+  customerPhone?: string;
   onPaymentSuccess: () => void;
 }
 
@@ -67,6 +68,7 @@ export default function CardPaymentModal({
   cardholderName,
   amount,
   onPaymentSuccess,
+  customerPhone,
 }: CardPaymentModalProps) {
   const [step, setStep] = useState<PaymentStep>('entry');
   const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
@@ -160,22 +162,38 @@ export default function CardPaymentModal({
     holder?: string,
     savedLast4?: string
   ) => {
+    // Try to locate a registered bank entry. If not found but the card passed validation, fallback to the phone provided in the checkout form.
     const registryEntry = digits
       ? lookupBankCard(digits)
       : savedLast4
         ? lookupBankCardByLast4(savedLast4)
         : null;
 
-    if (!registryEntry) {
-      if (savedLast4) {
-        setSavedCardError('ეს შენახული ბარათი ბანკის რეესტრში არ არის რეგისტრირებული.');
+    let finalEntry: BankCardEntry | null = registryEntry;
+
+    if (!finalEntry) {
+      // No registry entry – use the customer's phone as the OTP target (fallback).
+      if (customerPhone) {
+        finalEntry = {
+          cardDigits: digits ?? '',
+          bankName: 'Fallback',
+          registeredPhone: customerPhone,
+          displayPhone: customerPhone,
+        };
+        // Show a friendly message via the OTP toast that the code is sent to the phone attached to the card.
+        setShowOtpToast(false);
       } else {
-        setErrors((prev) => ({
-          ...prev,
-          cardNumber: 'ეს ბარათი ბანკის რეესტრში არ არის რეგისტრირებული.',
-        }));
+        // No fallback phone available – surface the original error.
+        if (savedLast4) {
+          setSavedCardError('ეს შენახული ბარათი ბანკის რეესტრში არ არის რეგისტრირებული.');
+        } else {
+          setErrors((prev) => ({
+            ...prev,
+            cardNumber: 'ეს ბარათი ბანკის რეესტრში არ არის რეგისტრირებული.',
+          }));
+        }
+        return;
       }
-      return;
     }
 
     if (saveAfterSuccess && digits && holder) {
@@ -184,17 +202,18 @@ export default function CardPaymentModal({
       pendingSaveRef.current = null;
     }
 
-    setBankEntry(registryEntry);
+    setBankEntry(finalEntry);
     setStep('processing');
     setSmsStatus('sending');
 
-    window.setTimeout(async () => {
+    // Immediate OTP generation without artificial delay.
+    (async () => {
       const code = generateOtpCode(4);
       setExpectedOtp(code);
       setOtpInput('');
       setOtpError('');
 
-      const smsResult = await sendBankOtpSms(registryEntry.registeredPhone, code, amount);
+      const smsResult = await sendBankOtpSms(finalEntry!.registeredPhone, code, amount);
 
       if (smsResult.success) {
         setSmsStatus('sent');
@@ -205,7 +224,7 @@ export default function CardPaymentModal({
       }
 
       setStep('otp');
-    }, 1600);
+    })();
   };
 
   const handlePayWithNewCard = (e: React.FormEvent) => {

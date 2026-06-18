@@ -105,9 +105,8 @@ export default function Cart({
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    setIsSubmitting(true);
       void completeOrder(false);
-    }, 1500);
   };
 
   const handleCardPaymentSuccess = () => {
