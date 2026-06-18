@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CartItem } from '../types';
-import { X, Trash2, ShoppingBasket, Truck, DollarSign, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Trash2, ShoppingBasket, Truck, CheckCircle2 } from 'lucide-react';
+import CardPaymentModal from './CardPaymentModal';
 
 interface CartProps {
   isOpen: boolean;
@@ -10,7 +11,13 @@ interface CartProps {
   onUpdateQuantity: (cartId: string, delta: number) => void;
   onRemoveItem: (cartId: string) => void;
   onClearCart: () => void;
-  onPlaceOrder: (customerName: string, customerPhone: string, customerAddress: string, paymentMethod: 'cash' | 'card_courier' | 'card_online', notes?: string) => void;
+  onPlaceOrder: (
+    customerName: string,
+    customerPhone: string,
+    customerAddress: string,
+    paymentMethod: 'cash' | 'card_courier' | 'card_online',
+    notes?: string
+  ) => Promise<void>;
 }
 
 export default function Cart({
@@ -31,6 +38,8 @@ export default function Cart({
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [showCardPayment, setShowCardPayment] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Math helper
   const itemsTotal = cartItems.reduce((acc, item) => {
@@ -40,33 +49,70 @@ export default function Cart({
   const deliveryFee = itemsTotal > 30 ? 0 : 3.00; // Free delivery for orders > ₾30
   const grandTotal = itemsTotal + deliveryFee;
 
+  const buildOrderNotes = (paidOnline = false): string | undefined => {
+    const paymentNote = paidOnline ? 'Paid via Verified Online Card' : undefined;
+    const trimmedNotes = notes.trim();
+
+    if (trimmedNotes && paymentNote) {
+      return `${trimmedNotes} | ${paymentNote}`;
+    }
+    return trimmedNotes || paymentNote;
+  };
+
+  const completeOrder = async (paidOnline = false) => {
+    setSubmitError(null);
+
+    try {
+      await onPlaceOrder(
+        name,
+        phone,
+        address,
+        paymentMethod,
+        buildOrderNotes(paidOnline)
+      );
+    } catch {
+      setSubmitError('შეკვეთის გაგზავნა ვერ მოხერხდა. სცადეთ ხელახლა.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    setIsSubmitting(false);
+    setShowCardPayment(false);
+    setOrderSuccess(true);
+    onClearCart();
+
+    setName('');
+    setPhone('');
+    setAddress('');
+    setNotes('');
+    setPaymentMethod('cash');
+
+    setTimeout(() => {
+      setOrderSuccess(false);
+      onClose();
+    }, 5000);
+  };
+
   const handleSubmitOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (cartItems.length === 0) return;
     if (!name.trim() || !phone.trim() || !address.trim()) return;
 
+    if (paymentMethod === 'card_online') {
+      setShowCardPayment(true);
+      return;
+    }
+
     setIsSubmitting(true);
-    
-    // Simulate API delay
+
     setTimeout(() => {
-      onPlaceOrder(name, phone, address, paymentMethod, notes || undefined);
-      
-      setIsSubmitting(false);
-      setOrderSuccess(true);
-      onClearCart();
-
-      // Reset fields
-      setName('');
-      setPhone('');
-      setAddress('');
-      setNotes('');
-      setPaymentMethod('cash');
-
-      setTimeout(() => {
-        setOrderSuccess(false);
-        onClose();
-      }, 5000); // Hold success state for 5 seconds before closing down
+      void completeOrder(false);
     }, 1500);
+  };
+
+  const handleCardPaymentSuccess = () => {
+    setIsSubmitting(true);
+    void completeOrder(true);
   };
 
   return (
@@ -190,14 +236,14 @@ export default function Cart({
                             <div className="flex items-center space-x-2 bg-white border border-stone-200 rounded-lg p-1 mt-4">
                               <button
                                 onClick={() => onUpdateQuantity(item.id, -1)}
-                                className="w-5 h-5 flex items-center justify-center text-xs font-bold text-stone-500 hover:bg-stone-100 rounded"
+                                className="w-5 h-5 flex items-center justify-center text-xs font-bold text-stone-500 hover:bg-stone-100 rounded cursor-pointer transition-colors duration-200"
                               >
                                 -
                               </button>
                               <span className="font-mono text-xs font-black w-4 text-center">{item.quantity}</span>
                               <button
                                 onClick={() => onUpdateQuantity(item.id, 1)}
-                                className="w-5 h-5 flex items-center justify-center text-xs font-bold text-stone-500 hover:bg-stone-100 rounded"
+                                className="w-5 h-5 flex items-center justify-center text-xs font-bold text-stone-500 hover:bg-stone-100 rounded cursor-pointer transition-colors duration-200"
                               >
                                 +
                               </button>
@@ -302,7 +348,7 @@ export default function Cart({
                             <button
                               type="button"
                               onClick={() => setPaymentMethod('cash')}
-                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all ${
+                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all duration-200 cursor-pointer ${
                                 paymentMethod === 'cash'
                                   ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
                                   : 'bg-white border-stone-200 text-stone-650 hover:bg-stone-50'
@@ -313,7 +359,7 @@ export default function Cart({
                             <button
                               type="button"
                               onClick={() => setPaymentMethod('card_courier')}
-                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all ${
+                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all duration-200 cursor-pointer ${
                                 paymentMethod === 'card_courier'
                                   ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
                                   : 'bg-white border-stone-200 text-stone-650 hover:bg-stone-50'
@@ -324,7 +370,7 @@ export default function Cart({
                             <button
                               type="button"
                               onClick={() => setPaymentMethod('card_online')}
-                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all ${
+                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all duration-200 cursor-pointer ${
                                 paymentMethod === 'card_online'
                                   ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
                                   : 'bg-white border-stone-200 text-stone-650 hover:bg-stone-50'
@@ -336,10 +382,15 @@ export default function Cart({
                         </div>
 
                         {/* Place Order CTA Button */}
+                        {submitError && (
+                          <p className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                            {submitError}
+                          </p>
+                        )}
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="w-full py-3.5 bg-stone-950 hover:bg-amber-550 hover:bg-amber-500 hover:text-stone-950 text-white font-extrabold text-sm sm:text-base rounded-2xl shadow-xl transition-all disabled:opacity-50 flex items-center justify-center space-x-1"
+                          className="w-full py-3.5 bg-stone-950 hover:bg-amber-500 hover:text-stone-950 text-white font-extrabold text-sm sm:text-base rounded-2xl shadow-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center space-x-1 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
                         >
                           {isSubmitting ? (
                             <span className="animate-pulse">იგზავნება... ⏳</span>
@@ -360,6 +411,14 @@ export default function Cart({
 
         </div>
       )}
+
+      <CardPaymentModal
+        isOpen={showCardPayment}
+        onClose={() => setShowCardPayment(false)}
+        cardholderName={name}
+        amount={grandTotal}
+        onPaymentSuccess={handleCardPaymentSuccess}
+      />
     </AnimatePresence>
   );
 }

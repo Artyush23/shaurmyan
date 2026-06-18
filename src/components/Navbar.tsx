@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, useScroll } from 'motion/react';
 import { ShoppingBag, Flame, Settings, UtensilsCrossed, MessageSquare } from 'lucide-react';
-import { getCurrentUser } from '../firebase';
+import { getCurrentUser, isAdminEmail } from '../firebase';
 
 interface NavbarProps {
   cartCount: number;
@@ -10,8 +10,6 @@ interface NavbarProps {
   onChangeView: (view: 'client' | 'admin') => void;
   onScrollTo: (elementId: string) => void;
 }
-
-const ADMIN_EMAIL = "artyushcharchyan0@gmail.com";
 
 export default function Navbar({
   cartCount,
@@ -37,7 +35,7 @@ export default function Navbar({
       });
   }, [activeView]); // Re-check when view toggles to keep state fresh
 
-  const isUserAdmin = userEmail === ADMIN_EMAIL;
+  const isUserAdmin = isAdminEmail(userEmail);
 
   return (
     <>
@@ -139,11 +137,12 @@ export default function Navbar({
               {isUserAdmin && (
                 <button
                   onClick={() => onChangeView(activeView === 'client' ? 'admin' : 'client')}
-                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
-                    activeView === 'admin'
-                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                      : 'bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700 hover:text-white'
-                  }`}
+                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black border transition-all cursor-pointer
+                    ${
+                      activeView === 'admin'
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                        : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-stone-950'
+                    }`}
                   title={activeView === 'admin' ? 'ადმინ პანელიდან გასვლა' : 'ადმინ პანელში შესვლა'}
                 >
                   <Settings className={`w-4.5 h-4.5 ${activeView === 'admin' ? 'animate-spin' : ''}`} />

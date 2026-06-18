@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MenuItem, Order, Review } from '../types';
-import { 
-  TrendingUp, ShoppingCart, MessageSquare, Plus, Trash2, 
-  Check, X, RefreshCw, Layers, Edit3, Award, DollarSign, Save 
+import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { auth, ADMIN_EMAIL, db } from '../firebase';
+import { collection, onSnapshot, Timestamp } from 'firebase/firestore';
+import { playNewOrderChime } from '../utils/adminChime';
+import {
+  TrendingUp, ShoppingCart, MessageSquare, Plus, Trash2,
+  Check, DollarSign, ShieldAlert, Loader2, LogIn,
 } from 'lucide-react';
 
 interface AdminPanelProps {
-  orders: Order[];
   menuItems: MenuItem[];
   reviews: Review[];
+  isAdminAuthorized: boolean;
   onUpdateOrderStatus: (orderId: string, status: Order['status']) => void;
   onDeleteOrder: (orderId: string) => void;
   onUpdateMenuPrice: (itemId: string, newPrice: number) => void;
@@ -19,10 +23,34 @@ interface AdminPanelProps {
   onDeleteReview: (reviewId: string) => void;
 }
 
+function mapFirestoreOrder(docId: string, data: Record<string, unknown>): Order {
+  const createdAtRaw = data.createdAt;
+  let createdAt = new Date().toISOString();
+
+  if (createdAtRaw instanceof Timestamp) {
+    createdAt = createdAtRaw.toDate().toISOString();
+  } else if (typeof createdAtRaw === 'string') {
+    createdAt = createdAtRaw;
+  }
+
+  return {
+    id: docId,
+    customerName: String(data.customerName ?? ''),
+    customerPhone: String(data.customerPhone ?? ''),
+    customerAddress: String(data.customerAddress ?? ''),
+    paymentMethod: data.paymentMethod as Order['paymentMethod'],
+    items: (data.items as Order['items']) ?? [],
+    totalPrice: Number(data.totalPrice ?? 0),
+    status: data.status as Order['status'],
+    createdAt,
+    notes: data.notes ? String(data.notes) : undefined,
+  };
+}
+
 export default function AdminPanel({
-  orders,
   menuItems,
   reviews,
+  isAdminAuthorized,
   onUpdateOrderStatus,
   onDeleteOrder,
   onUpdateMenuPrice,
@@ -32,6 +60,12 @@ export default function AdminPanel({
   onDeleteReview,
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<'stats' | 'orders' | 'menu' | 'reviews'>('stats');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+  const isFirstSnapshotRef = useRef(true);
   
   // States for adding a new item
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -40,6 +74,62 @@ export default function AdminPanel({
   const [newPrice, setNewPrice] = useState(10);
   const [newImage, setNewImage] = useState('https://images.unsplash.com/photo-1662116765994-4e2c918be177?auto=format&fit=crop&q=80&w=400');
   const [newCat, setNewCat] = useState<'classic' | 'special' | 'combos' | 'drinks' | 'sides'>('classic');
+
+  useEffect(() => {
+    if (!isAdminAuthorized) {
+      setOrders([]);
+      setOrdersLoading(false);
+      setOrdersError(null);
+      isFirstSnapshotRef.current = true;
+      return;
+    }
+
+    setOrdersLoading(true);
+    setOrdersError(null);
+
+    const unsubOrders = onSnapshot(
+      collection(db, 'orders'),
+      (snapshot) => {
+        if (!isFirstSnapshotRef.current) {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const order = mapFirestoreOrder(
+                change.doc.id,
+                change.doc.data() as Record<string, unknown>
+              );
+              if (order.status === 'new') {
+                playNewOrderChime();
+              }
+            }
+          });
+        } else {
+          isFirstSnapshotRef.current = false;
+        }
+
+        const liveOrders = snapshot.docs
+          .map((docSnap) =>
+            mapFirestoreOrder(docSnap.id, docSnap.data() as Record<string, unknown>)
+          )
+          .sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+
+        setOrders(liveOrders);
+        setOrdersLoading(false);
+        setOrdersError(null);
+      },
+      (error) => {
+        console.error('Firestore orders listener failed:', error);
+        setOrdersLoading(false);
+        setOrdersError('შეკვეთების ჩატვირთვა ვერ მოხერხდა. გთხოვთ, შეამოწმოთ ადმინის ავტორიზაცია.');
+      }
+    );
+
+    return () => {
+      unsubOrders();
+      isFirstSnapshotRef.current = true;
+    };
+  }, [isAdminAuthorized]);
 
   // Math stats helpers
   const totalRevenue = orders
@@ -61,6 +151,79 @@ export default function AdminPanel({
   const popularSorted = Object.entries(popularStats)
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count);
+
+  const handleAdminSignIn = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+
+      if (result.user.email !== ADMIN_EMAIL) {
+        await signOut(auth);
+        setAuthError('ამ პანელზე წვდომა მხოლოდ ავტორიზებულ ადმინს აქვს.');
+      }
+    } catch (error) {
+      console.error('Admin sign-in failed:', error);
+      setAuthError('ავტორიზაცია ვერ მოხერხდა. სცადეთ ხელახლა.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const guardedUpdateOrderStatus = (orderId: string, status: Order['status']) => {
+    if (!isAdminAuthorized) return;
+    onUpdateOrderStatus(orderId, status);
+  };
+
+  const guardedDeleteOrder = (orderId: string) => {
+    if (!isAdminAuthorized) return;
+    onDeleteOrder(orderId);
+  };
+
+  const paymentLabel = (method: Order['paymentMethod']) => {
+    if (method === 'cash') return 'ნაღდი';
+    if (method === 'card_courier') return 'ბარათი (კურიერი)';
+    return 'ონლაინ ბარათი';
+  };
+
+  if (!isAdminAuthorized) {
+    return (
+      <div className="min-h-screen bg-stone-900 text-stone-100 font-sans p-4 sm:p-8 relative charcoal-grid-bg flex items-center justify-center">
+        <div className="max-w-md w-full bg-stone-950/90 border border-stone-800 rounded-3xl p-8 text-center space-y-5 shadow-2xl">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <ShieldAlert className="w-8 h-8 text-amber-500" aria-hidden="true" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-black text-white">ადმინ პანელი დაცულია</h1>
+            <p className="text-sm text-stone-400 leading-relaxed">
+              Firestore-ის რეალურ დროში სინქრონიზაციისთვის საჭიროა ადმინის ავტორიზაცია ({ADMIN_EMAIL}).
+            </p>
+          </div>
+          {authError && (
+            <p className="text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+              {authError}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleAdminSignIn}
+            disabled={authLoading}
+            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-sm shadow-xl transition-all duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {authLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            ) : (
+              <LogIn className="w-4 h-4" aria-hidden="true" />
+            )}
+            <span>{authLoading ? 'ავტორიზაცია...' : 'Google-ით შესვლა'}</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleCreateMenuItem = (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +280,7 @@ export default function AdminPanel({
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setActiveTab('stats')}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
                 activeTab === 'stats' ? 'bg-amber-500 text-stone-950 font-black' : 'bg-stone-800 hover:bg-stone-700 text-stone-300'
               }`}
             >
@@ -125,7 +288,7 @@ export default function AdminPanel({
             </button>
             <button
               onClick={() => setActiveTab('orders')}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all relative ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer relative ${
                 activeTab === 'orders' ? 'bg-amber-500 text-stone-950 font-black' : 'bg-stone-800 hover:bg-stone-700 text-stone-300'
               }`}
             >
@@ -138,7 +301,7 @@ export default function AdminPanel({
             </button>
             <button
               onClick={() => setActiveTab('menu')}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
                 activeTab === 'menu' ? 'bg-amber-500 text-stone-950 font-black' : 'bg-stone-800 hover:bg-stone-700 text-stone-300'
               }`}
             >
@@ -146,7 +309,7 @@ export default function AdminPanel({
             </button>
             <button
               onClick={() => setActiveTab('reviews')}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
                 activeTab === 'reviews' ? 'bg-amber-500 text-stone-950 font-black' : 'bg-stone-800 hover:bg-stone-700 text-stone-300'
               }`}
             >
@@ -254,7 +417,7 @@ export default function AdminPanel({
                   <div>
                     <span className="text-white text-lg font-black block mb-4">📢 მფრინავი შენიშვნა</span>
                     <p className="text-stone-400 text-xs leading-relaxed font-sans">
-                      აქტიური შეკვეთების ცხრილი ავტომატურად განახლდება ახალი შეკვეთის შემოტანისთანავე. ბრაუზერის ხელახლა ჩატვირთვისას მონაცემები ინახება.
+                      შეკვეთები Firestore-იდან რეალურ დროში იტვირთება. ახალი შეკვეთა ავტომატურად გამოჩნდება ამ პანელში გადატვირთვის გარეშე.
                     </p>
                   </div>
                   <div className="bg-amber-500/5 border border-amber-500/10 p-5 rounded-2xl mt-8">
@@ -280,10 +443,31 @@ export default function AdminPanel({
             >
               <div className="flex items-center justify-between">
                 <span className="text-white font-extrabold text-lg">შეკვეთების ჟურნალი ({orders.length})</span>
-                <span className="text-xs text-amber-500 animate-pulse font-mono">● LIVE ORDERS</span>
+                <span className="text-xs text-amber-500 font-mono flex items-center gap-1.5">
+                  {ordersLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      SYNCING...
+                    </>
+                  ) : (
+                    <>● LIVE FIRESTORE</>
+                  )}
+                </span>
               </div>
 
-              {orders.map(ord => {
+              {ordersError && (
+                <div className="px-4 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-medium">
+                  {ordersError}
+                </div>
+              )}
+
+              {ordersLoading && orders.length === 0 ? (
+                <div className="text-center py-20 bg-stone-950 rounded-3xl border border-dashed border-stone-800">
+                  <Loader2 className="w-8 h-8 text-amber-500 animate-spin motion-reduce:animate-none mx-auto mb-3" aria-hidden="true" />
+                  <p className="text-stone-400 text-sm">Firestore-იდან შეკვეთების ჩატვირთვა...</p>
+                </div>
+              ) : (
+              orders.map(ord => {
                 // Color mapping helper
                 const statusLabels: { [key: string]: { label: string; class: string } } = {
                   new: { label: 'ახალი 🚀', class: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
@@ -349,7 +533,7 @@ export default function AdminPanel({
                     {/* Total & Action Status switcher buttons */}
                     <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between lg:justify-center gap-4 pt-4 border-t lg:border-t-0 border-stone-850 lg:pt-0">
                       <div className="text-left lg:text-right">
-                        <span className="text-[9px] text-stone-500 font-mono block">სულ გადახდილი ({ord.paymentMethod === 'cash' ? 'ნაღდი' : 'ბარათი'})</span>
+                        <span className="text-[9px] text-stone-500 font-mono block">სულ გადახდილი ({paymentLabel(ord.paymentMethod)})</span>
                         <span className="font-mono text-xl font-black text-red-500">₾{ord.totalPrice.toFixed(2)}</span>
                       </div>
 
@@ -359,31 +543,31 @@ export default function AdminPanel({
                           <>
                             {ord.status === 'new' && (
                               <button
-                                onClick={() => onUpdateOrderStatus(ord.id, 'preparing')}
-                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors cursor-pointer"
+                                onClick={() => guardedUpdateOrderStatus(ord.id, 'preparing')}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
                               >
                                 დამუშავება ▶
                               </button>
                             )}
                             {ord.status === 'preparing' && (
                               <button
-                                onClick={() => onUpdateOrderStatus(ord.id, 'delivering')}
-                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors cursor-pointer"
+                                onClick={() => guardedUpdateOrderStatus(ord.id, 'delivering')}
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
                               >
                                 გაგზავნა ▶
                               </button>
                             )}
                             {ord.status === 'delivering' && (
                               <button
-                                onClick={() => onUpdateOrderStatus(ord.id, 'delivered')}
-                                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors cursor-pointer"
+                                onClick={() => guardedUpdateOrderStatus(ord.id, 'delivered')}
+                                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
                               >
                                 ჩაბარება ✔
                               </button>
                             )}
                             <button
-                              onClick={() => onUpdateOrderStatus(ord.id, 'cancelled')}
-                              className="px-2 py-1.5 hover:bg-red-500/10 text-red-400 hover:text-white rounded-lg text-[10px] border border-red-500/10 cursor-pointer"
+                              onClick={() => guardedUpdateOrderStatus(ord.id, 'cancelled')}
+                              className="px-2 py-1.5 hover:bg-red-500/10 text-red-400 hover:text-white rounded-lg text-[10px] border border-red-500/10 transition-colors duration-200 cursor-pointer"
                               title="გაუქმება"
                             >
                               გააუქმე
@@ -391,8 +575,8 @@ export default function AdminPanel({
                           </>
                         ) : (
                           <button
-                            onClick={() => onDeleteOrder(ord.id)}
-                            className="p-2 hover:bg-red-650 hover:bg-red-650 hover:text-white border border-stone-800 text-stone-500 rounded-lg transition-all cursor-pointer"
+                            onClick={() => guardedDeleteOrder(ord.id)}
+                            className="p-2 hover:bg-red-600 hover:text-white border border-stone-800 text-stone-500 rounded-lg transition-all duration-200 cursor-pointer"
                             title="ამოშლა არქივიდან"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -403,9 +587,10 @@ export default function AdminPanel({
 
                   </div>
                 );
-              })}
+              })
+              )}
 
-              {orders.length === 0 && (
+              {!ordersLoading && orders.length === 0 && (
                 <div className="text-center py-20 bg-stone-950 rounded-3xl border border-dashed border-stone-800">
                   <p className="text-stone-400 text-sm">შეკვეთების ჟურნალი ჯერ ცარიელია.</p>
                 </div>
@@ -426,7 +611,7 @@ export default function AdminPanel({
                 <span className="text-white font-black text-lg">მენიუს კერძების მართვა</span>
                 <button
                   onClick={() => setIsAddingItem(!isAddingItem)}
-                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:scale-102 transition-transform text-stone-950 text-xs font-bold rounded-xl flex items-center space-x-1.5 cursor-pointer"
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-all duration-200 cursor-pointer"
                 >
                   <Plus className="w-4 h-4 stroke-[3]" />
                   <span>ახალი კერძი</span>
@@ -501,13 +686,13 @@ export default function AdminPanel({
                       <button
                         type="button"
                         onClick={() => setIsAddingItem(false)}
-                        className="px-4 py-2 bg-stone-900 text-stone-400 text-xs font-bold rounded-lg hover:bg-stone-850"
+                        className="px-4 py-2 bg-stone-900 text-stone-400 text-xs font-bold rounded-lg hover:bg-stone-800 transition-colors duration-200 cursor-pointer"
                       >
                         გაუქმება
                       </button>
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-extrabold rounded-lg flex items-center space-x-1"
+                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-extrabold rounded-lg flex items-center space-x-1 transition-colors duration-200 cursor-pointer"
                       >
                         <Check className="w-4 h-4" />
                         <span>დამატება</span>
@@ -559,7 +744,7 @@ export default function AdminPanel({
                       <button
                         onClick={() => onDeleteMenuItem(itm.id)}
                         disabled={menuItems.length <= 4} // Do not let them empty the entire database
-                        className="p-2 hover:bg-red-500/10 text-stone-500 hover:text-red-400 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="p-2 hover:bg-red-500/10 text-stone-500 hover:text-red-400 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                         title="უკან წაშლა"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -627,7 +812,7 @@ export default function AdminPanel({
                       {!rev.approved ? (
                         <button
                           onClick={() => onApproveReview(rev.id)}
-                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-stone-950 font-black text-[10px] rounded-lg cursor-pointer flex items-center space-x-1"
+                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-stone-950 font-black text-[10px] rounded-lg cursor-pointer flex items-center space-x-1 transition-colors duration-200"
                         >
                           <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                           <span>დასტური</span>
@@ -638,7 +823,7 @@ export default function AdminPanel({
 
                       <button
                         onClick={() => onDeleteReview(rev.id)}
-                        className="p-2 hover:bg-red-500/10 border border-stone-850 text-stone-500 hover:text-red-400 rounded-lg cursor-pointer ml-1"
+                        className="p-2 hover:bg-red-500/10 border border-stone-850 text-stone-500 hover:text-red-400 rounded-lg cursor-pointer ml-1 transition-colors duration-200"
                         title="წაშლა"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

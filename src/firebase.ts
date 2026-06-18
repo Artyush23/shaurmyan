@@ -1,5 +1,12 @@
 import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+
+export const ADMIN_EMAIL = "atucharchyan23@gmail.com";
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  return email === ADMIN_EMAIL;
+}
 
 // TODO: Replace the placeholder values with your actual Firebase config.
 const firebaseConfig = {
@@ -14,6 +21,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 
 /**
  * Returns a Promise that resolves to the current user enriched with an `admin` boolean.
