@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MenuItem, CartItem } from '../types';
 import { Flame, Star, ShoppingCart, Plus, Check, X, ShieldAlert, Sparkles } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface MenuProps {
   menuItems: MenuItem[];
@@ -9,6 +10,7 @@ interface MenuProps {
 }
 
 export default function Menu({ menuItems, onAddToCart }: MenuProps) {
+  const { t } = useTranslation();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
   
@@ -18,12 +20,12 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
   const [quantity, setQuantity] = useState<number>(1);
 
   const categories = [
-    { id: 'all', label: 'ყველა' },
-    { id: 'special', label: '✨ საფირმო' },
-    { id: 'classic', label: '🌯 კლასიკური' },
-    { id: 'combos', label: '🍟 კომბოები' },
-    { id: 'drinks', label: '🥤 სასმელები' },
-    { id: 'sides', label: '🧀 გარნირი' }
+    { id: 'all', icon: '✦', translationKey: 'menu.categories.all' },
+    { id: 'special', icon: '✨', translationKey: 'menu.categories.special' },
+    { id: 'classic', icon: '🌯', translationKey: 'menu.categories.classic' },
+    { id: 'combos', icon: '🍟', translationKey: 'menu.categories.combos' },
+    { id: 'drinks', icon: '🥤', translationKey: 'menu.categories.drinks' },
+    { id: 'sides', icon: '🧀', translationKey: 'menu.categories.sides' }
   ];
 
   const filteredItems = selectedCategory === 'all'
@@ -96,18 +98,21 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
         </div>
 
         {/* Category Tabs */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-12">
+        <div className="mb-12 flex flex-row gap-3 overflow-x-auto whitespace-nowrap pb-3 scrollbar-hide [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:justify-start lg:grid lg:grid-cols-6 lg:overflow-visible lg:pb-0">
           {categories.map(cat => (
             <button
               key={cat.id}
+              type="button"
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
+              className={`min-h-12 shrink-0 cursor-pointer select-none rounded-2xl px-5 py-3 text-xs sm:px-6 sm:text-sm ${
                 selectedCategory === cat.id
-                  ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-500/20 scale-102 font-extrabold'
-                  : 'bg-white hover:bg-stone-50 border border-stone-200 text-stone-700'
+                  ? 'bg-amber-500 text-stone-950 font-bold shadow-lg shadow-amber-500/20 transform scale-105 transition-all duration-300'
+                  : 'bg-stone-900 text-stone-400 border border-stone-800 hover:border-amber-500/50 hover:text-amber-500 transition-all duration-200'
               }`}
+              aria-pressed={selectedCategory === cat.id}
             >
-              {cat.label}
+              <span className="mr-2" aria-hidden="true">{cat.icon}</span>
+              {t(cat.translationKey)}
             </button>
           ))}
         </div>

@@ -1,26 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion, useScroll } from 'motion/react';
 import {
-  Menu,
-  X,
-  ShoppingBag,
+  ChevronDown,
   Flame,
-  Settings,
-  UtensilsCrossed,
-  MessageSquare,
+  Languages,
   Landmark,
   LogIn,
+  Menu,
+  MessageSquare,
+  ShoppingBag,
   UserRound,
+  UtensilsCrossed,
+  X,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { supportedLanguages, type SupportedLanguage } from '../i18n';
 
 interface NavbarProps {
   cartCount: number;
   onOpenCart: () => void;
   activeView: 'client' | 'admin' | 'banking' | 'profile';
   onChangeView: (view: 'client' | 'admin' | 'banking' | 'profile') => void;
-  onOpenBanking: () => void;
   onScrollTo: (elementId: string) => void;
-  isAdminUser: boolean;
   isAuthenticated: boolean;
   onOpenAuth: () => void;
 }
@@ -29,7 +30,6 @@ type NavItem = {
   label: string;
   icon: React.ReactNode;
   action: () => void;
-  active?: boolean;
 };
 
 export default function Navbar({
@@ -37,114 +37,69 @@ export default function Navbar({
   onOpenCart,
   activeView,
   onChangeView,
-  onOpenBanking,
   onScrollTo,
-  isAdminUser,
   isAuthenticated,
   onOpenAuth,
 }: NavbarProps) {
+  const { t, i18n } = useTranslation();
   const { scrollYProgress } = useScroll();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const currentLanguage = (i18n.resolvedLanguage || i18n.language || 'ka')
+    .split('-')[0] as SupportedLanguage;
+  const activeLanguage =
+    supportedLanguages.find((language) => language.code === currentLanguage) ??
+    supportedLanguages[0];
 
   useEffect(() => {
     setMobileOpen(false);
   }, [activeView]);
 
-  const desktopItems = useMemo<NavItem[]>(() => {
-    if (activeView !== 'client') return [];
-
-    return [
+  const homeItems = useMemo<NavItem[]>(
+    () => [
       {
-        label: 'მენიუ',
-        icon: <UtensilsCrossed className="w-4 h-4 text-amber-500/80" />,
+        label: t('navbar.menu'),
+        icon: <UtensilsCrossed className="h-4 w-4" />,
         action: () => onScrollTo('menu'),
       },
       {
-        label: 'ანატომია',
-        icon: <Flame className="w-4 h-4 text-amber-500/80" />,
+        label: t('navbar.anatomy'),
+        icon: <Flame className="h-4 w-4" />,
         action: () => onScrollTo('anatomy'),
       },
       {
-        label: 'შეფასებები',
-        icon: <MessageSquare className="w-4 h-4 text-amber-500/80" />,
+        label: t('navbar.reviews'),
+        icon: <MessageSquare className="h-4 w-4" />,
         action: () => onScrollTo('reviews'),
       },
-      ...(isAdminUser
-        ? [
-            {
-              label: 'ანგარიშები',
-              icon: <Landmark className="w-4 h-4 text-amber-500/80" />,
-              action: onOpenBanking,
-            },
-          ]
-        : []),
-    ];
-  }, [activeView, isAdminUser, onOpenBanking, onScrollTo]);
+    ],
+    [onScrollTo, t]
+  );
 
   const mobileItems = useMemo<NavItem[]>(() => {
-    const items: NavItem[] = [];
+    const items = activeView === 'client' ? [...homeItems] : [];
 
-    if (activeView === 'client') {
-      items.push(
-        {
-          label: 'მენიუ',
-          icon: <UtensilsCrossed className="w-4 h-4" />,
-          action: () => onScrollTo('menu'),
-        },
-        {
-          label: 'ანატომია',
-          icon: <Flame className="w-4 h-4" />,
-          action: () => onScrollTo('anatomy'),
-        },
-        {
-          label: 'შეფასებები',
-          icon: <MessageSquare className="w-4 h-4" />,
-          action: () => onScrollTo('reviews'),
-        },
-        ...(isAdminUser
-          ? [
-              {
-                label: 'ანგარიშები',
-                icon: <Landmark className="w-4 h-4" />,
-                action: onOpenBanking,
-              },
-            ]
-          : [])
-      );
-    }
-
-    if ((activeView === 'banking' && isAdminUser) || activeView === 'profile') {
+    if (activeView !== 'client') {
       items.push({
-        label: 'საიტზე დაბრუნება',
-        icon: <Landmark className="w-4 h-4" />,
+        label: t('navbar.backToSite'),
+        icon: <Landmark className="h-4 w-4" />,
         action: () => onChangeView('client'),
-      });
-    }
-
-    if (activeView === 'admin' && isAdminUser) {
-      items.push({
-        label: 'საიტზე დაბრუნება',
-        icon: <Landmark className="w-4 h-4" />,
-        action: () => onChangeView('client'),
-      });
-    }
-
-    if (isAdminUser) {
-      items.push({
-        label: activeView === 'admin' ? 'ადმინი' : 'ადმინ პანელი',
-        icon: <Settings className={`w-4 h-4 ${activeView === 'admin' ? 'animate-spin' : ''}`} />,
-        action: () => onChangeView(activeView === 'client' ? 'admin' : 'client'),
       });
     }
 
     items.push({
-      label: isAuthenticated ? 'პროფილი / Profile' : 'შესვლა / Sign In',
-      icon: isAuthenticated ? <UserRound className="w-4 h-4" /> : <LogIn className="w-4 h-4" />,
+      label: isAuthenticated ? t('navbar.profile') : t('navbar.signIn'),
+      icon: isAuthenticated ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />,
       action: isAuthenticated ? () => onChangeView('profile') : onOpenAuth,
     });
 
     return items;
-  }, [activeView, isAdminUser, isAuthenticated, onChangeView, onOpenAuth, onOpenBanking, onScrollTo]);
+  }, [activeView, homeItems, isAuthenticated, onChangeView, onOpenAuth, t]);
+
+  const changeLanguage = (language: SupportedLanguage) => {
+    void i18n.changeLanguage(language);
+    setLanguageOpen(false);
+  };
 
   return (
     <>
@@ -152,7 +107,7 @@ export default function Navbar({
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ type: 'spring', stiffness: 100, damping: 20 }}
-        className="fixed top-0 left-0 right-0 z-50 bg-stone-900/95 backdrop-blur-md shadow-2xl border-b border-stone-800"
+        className="fixed inset-x-0 top-0 z-50 border-b border-stone-800 bg-stone-900/95 shadow-2xl backdrop-blur-md"
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between sm:h-20">
@@ -172,99 +127,120 @@ export default function Navbar({
                 <Flame className="h-5 w-5 text-white sm:h-6 sm:w-6" />
               </motion.div>
               <div className="leading-tight">
-                <span className="block text-xl font-black tracking-tighter text-white font-mono sm:text-2xl">
+                <span className="block font-mono text-xl font-black tracking-tighter text-white sm:text-2xl">
                   Shaurm<span className="text-amber-500">YAN</span>
                 </span>
-                <span className="block text-[8px] font-mono uppercase tracking-widest text-amber-500/80 sm:text-[9px]">
-                  Premium Quality
+                <span className="block font-mono text-[8px] uppercase tracking-widest text-amber-500/80 sm:text-[9px]">
+                  {t('navbar.premiumQuality')}
                 </span>
               </div>
             </button>
 
-            <div className="hidden items-center gap-6 md:flex">
-              {desktopItems.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={item.action}
-                  className="flex cursor-pointer items-center gap-1.5 text-sm font-medium tracking-wide text-stone-300 transition-colors hover:text-amber-500"
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </button>
-              ))}
+            <div className="hidden items-center gap-5 lg:flex">
+              {activeView === 'client' &&
+                homeItems.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={item.action}
+                    className="flex cursor-pointer items-center gap-1.5 text-sm font-medium text-stone-300 transition-colors hover:text-amber-500"
+                  >
+                    <span className="text-amber-500/80">{item.icon}</span>
+                    {item.label}
+                  </button>
+                ))}
 
-              {(activeView === 'banking' || activeView === 'profile') && (
+              {activeView !== 'client' && (
                 <button
                   type="button"
                   onClick={() => onChangeView('client')}
-                  className="rounded-xl border border-stone-800 bg-stone-900 px-4 py-2.5 text-sm font-black text-stone-300 transition-colors cursor-pointer hover:bg-stone-800 hover:text-amber-400"
+                  className="cursor-pointer rounded-xl border border-stone-800 bg-stone-900 px-4 py-2.5 text-sm font-black text-stone-300 transition-colors hover:bg-stone-800 hover:text-amber-400"
                 >
-                  საიტზე დაბრუნება
+                  {t('navbar.backToSite')}
                 </button>
               )}
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              {activeView === 'client' && (
-                <>
-                  <motion.button
-                    id="checkout-cart-btn"
-                    onClick={onOpenCart}
-                    whileTap={{ scale: 0.95 }}
-                    className="relative flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-3 font-black text-stone-950 shadow-lg shadow-amber-500/20 transition-all hover:from-amber-600 hover:to-amber-700 sm:px-5 sm:py-2.5"
-                  >
-                    <ShoppingBag className="h-5 w-5 sm:mr-2" />
-                    <span className="hidden sm:inline">კალათა</span>
-                    {cartCount > 0 && (
-                      <motion.span
-                        key={cartCount}
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-                        className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-stone-900 bg-red-600 px-1.5 text-xs font-bold text-white shadow-md"
-                      >
-                        {cartCount}
-                      </motion.span>
-                    )}
-                  </motion.button>
-                </>
-              )}
-
-              {isAdminUser && (
+              <div className="relative hidden sm:block">
                 <button
                   type="button"
-                  onClick={() => onChangeView(activeView === 'client' ? 'admin' : 'client')}
-                  className={`hidden cursor-pointer items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-black transition-all sm:flex sm:text-sm
-                    ${
-                      activeView === 'admin'
-                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-                        : 'border-transparent bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 hover:from-amber-600 hover:to-amber-700'
-                    }`}
-                  title={activeView === 'admin' ? 'ადმინ პანელიდან გასვლა' : 'ადმინ პანელში გადასვლა'}
+                  onClick={() => setLanguageOpen((open) => !open)}
+                  className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-stone-800 bg-stone-950 px-3 text-xs font-black text-stone-200 transition-colors hover:border-amber-500/30 hover:text-amber-400"
+                  aria-expanded={languageOpen}
+                  aria-label={t('navbar.language')}
                 >
-                  <Settings className={`h-4.5 w-4.5 ${activeView === 'admin' ? 'animate-spin' : ''}`} />
-                  <span>{activeView === 'admin' ? 'ადმინი' : 'ადმინ პანელი'}</span>
+                  <Languages className="h-4 w-4 text-amber-400" />
+                  {activeLanguage.label}
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
                 </button>
+                <AnimatePresence>
+                  {languageOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      className="absolute right-0 top-[calc(100%+0.5rem)] w-44 overflow-hidden rounded-2xl border border-stone-800 bg-stone-950 p-1.5 shadow-2xl"
+                    >
+                      {supportedLanguages.map((language) => (
+                        <button
+                          key={language.code}
+                          type="button"
+                          onClick={() => changeLanguage(language.code)}
+                          className={`flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2.5 text-left text-xs transition-colors ${
+                            language.code === activeLanguage.code
+                              ? 'bg-amber-500 text-stone-950'
+                              : 'text-stone-300 hover:bg-stone-900 hover:text-amber-400'
+                          }`}
+                        >
+                          <span className="font-black">{language.label}</span>
+                          <span>{language.name}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {activeView === 'client' && (
+                <motion.button
+                  id="checkout-cart-btn"
+                  onClick={onOpenCart}
+                  whileTap={{ scale: 0.95 }}
+                  className="relative flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-3 font-black text-stone-950 shadow-lg shadow-amber-500/20 transition-all hover:from-amber-400 hover:to-amber-500 sm:px-5 sm:py-2.5"
+                >
+                  <ShoppingBag className="h-5 w-5 sm:mr-2" />
+                  <span className="hidden sm:inline">{t('navbar.cart')}</span>
+                  {cartCount > 0 && (
+                    <motion.span
+                      key={cartCount}
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-stone-900 bg-red-600 px-1.5 text-xs font-bold text-white"
+                    >
+                      {cartCount}
+                    </motion.span>
+                  )}
+                </motion.button>
               )}
 
               <button
                 type="button"
                 onClick={isAuthenticated ? () => onChangeView('profile') : onOpenAuth}
-                className={`hidden cursor-pointer items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-black transition-all sm:flex sm:text-sm ${
+                className={`hidden min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-4 text-sm font-black transition-colors md:flex ${
                   activeView === 'profile'
                     ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
                     : 'border-stone-800 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-amber-400'
                 }`}
               >
                 {isAuthenticated ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
-                <span>{isAuthenticated ? 'პროფილი / Profile' : 'შესვლა / Sign In'}</span>
+                {isAuthenticated ? t('navbar.profile') : t('navbar.signIn')}
               </button>
 
               <button
                 type="button"
-                onClick={() => setMobileOpen((prev) => !prev)}
-                className="flex cursor-pointer items-center justify-center rounded-xl border border-stone-800 bg-stone-900 p-3 text-stone-200 transition-colors hover:bg-stone-800 md:hidden"
+                onClick={() => setMobileOpen((open) => !open)}
+                className="flex cursor-pointer items-center justify-center rounded-xl border border-stone-800 bg-stone-900 p-3 text-stone-200 transition-colors hover:bg-stone-800 lg:hidden"
                 aria-expanded={mobileOpen}
                 aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
               >
@@ -283,7 +259,7 @@ export default function Navbar({
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
-            className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm lg:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -294,20 +270,20 @@ export default function Navbar({
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-              className="absolute right-0 top-0 h-full w-[84vw] max-w-sm border-l border-stone-800 bg-stone-950 shadow-2xl"
+              className="absolute right-0 top-0 h-full w-[86vw] max-w-sm overflow-y-auto border-l border-stone-800 bg-stone-950 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-stone-800 px-4 py-4">
                 <div>
-                  <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-amber-400">
-                    Navigation
+                  <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-400">
+                    {t('navbar.navigation')}
                   </p>
                   <h2 className="text-lg font-black text-white">ShaurmYAN</h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => setMobileOpen(false)}
-                  className="rounded-xl border border-stone-800 bg-stone-900 p-2 text-stone-200 transition-colors cursor-pointer hover:bg-stone-800"
+                  className="cursor-pointer rounded-xl border border-stone-800 bg-stone-900 p-2 text-stone-200 hover:bg-stone-800"
                   aria-label="Close menu"
                 >
                   <X className="h-5 w-5" />
@@ -323,12 +299,34 @@ export default function Navbar({
                       setMobileOpen(false);
                       item.action();
                     }}
-                    className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-stone-800 bg-stone-900 px-4 py-3 text-left text-sm font-semibold text-stone-200 transition-colors hover:bg-stone-800 hover:text-amber-400"
+                    className="flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-2xl border border-stone-800 bg-stone-900 px-4 py-3 text-left text-sm font-semibold text-stone-200 transition-colors hover:bg-stone-800 hover:text-amber-400"
                   >
                     <span className="text-amber-400">{item.icon}</span>
-                    <span>{item.label}</span>
+                    {item.label}
                   </button>
                 ))}
+
+                <div className="pt-3">
+                  <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-stone-500">
+                    {t('navbar.language')}
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {supportedLanguages.map((language) => (
+                      <button
+                        key={language.code}
+                        type="button"
+                        onClick={() => changeLanguage(language.code)}
+                        className={`min-h-11 cursor-pointer rounded-xl border text-xs font-black transition-colors ${
+                          language.code === activeLanguage.code
+                            ? 'border-amber-500 bg-amber-500 text-stone-950'
+                            : 'border-stone-800 bg-stone-900 text-stone-300 hover:text-amber-400'
+                        }`}
+                      >
+                        {language.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {activeView === 'client' && (
                   <button
@@ -337,13 +335,11 @@ export default function Navbar({
                       setMobileOpen(false);
                       onOpenCart();
                     }}
-                    className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 text-sm font-black text-stone-950 shadow-lg shadow-amber-500/20 transition-colors hover:from-amber-400 hover:to-amber-500"
+                    className="mt-3 flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 text-sm font-black text-stone-950"
                   >
                     <ShoppingBag className="h-4 w-4" />
-                    <span>კალათა</span>
-                    <span className="rounded-full bg-stone-950/10 px-2 py-0.5 text-xs">
-                      {cartCount}
-                    </span>
+                    {t('navbar.cart')}
+                    <span className="rounded-full bg-stone-950/10 px-2 py-0.5 text-xs">{cartCount}</span>
                   </button>
                 )}
               </div>

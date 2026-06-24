@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { collection, onSnapshot, query, Timestamp, where } from 'firebase/firestore';
 import {
+  ArrowUpRight,
   CreditCard,
   Edit3,
+  Landmark,
   Mail,
   Loader2,
   LogOut,
   Phone,
   Save,
+  Settings,
   ShieldCheck,
   ShoppingBag,
   Trash2,
@@ -72,9 +75,15 @@ function splitDisplayName(displayName: string | null | undefined) {
 
 interface UserProfileProps {
   onSignedOut?: () => void;
+  onOpenAdmin?: () => void;
+  onOpenBanking?: () => void;
 }
 
-export default function UserProfile({ onSignedOut }: UserProfileProps) {
+export default function UserProfile({
+  onSignedOut,
+  onOpenAdmin,
+  onOpenBanking,
+}: UserProfileProps) {
   const { user, profile, isAdmin, signOut } = useAuth();
   const [savedCard, setSavedCard] = useState<SavedCard | null>(() => getSavedCard());
   const [orders, setOrders] = useState<Order[]>([]);
@@ -468,8 +477,77 @@ export default function UserProfile({ onSignedOut }: UserProfileProps) {
             </div>
           </section>
         </div>
+
+        {isAdmin && (
+          <section className="mt-6 overflow-hidden rounded-3xl border border-amber-500/20 bg-stone-950/90 shadow-2xl shadow-amber-500/5">
+            <div className="border-b border-stone-800 bg-amber-500/5 px-4 py-5 sm:px-6">
+              <div className="flex items-start gap-3">
+                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-400">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-amber-500">
+                    Secure Administration
+                  </p>
+                  <h2 className="mt-1 text-xl font-black text-white sm:text-2xl">
+                    ადმინისტრაცია / Administration
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-400">
+                    Authorized controls for restaurant operations and protected banking data.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-2">
+              <AdminControlCard
+                icon={<Settings className="h-6 w-6" />}
+                title="ადმინ პანელი / Admin Panel"
+                description="Manage orders, menu items, pricing, and customer reviews."
+                onClick={onOpenAdmin}
+              />
+              <AdminControlCard
+                icon={<Landmark className="h-6 w-6" />}
+                title="ანგარიშები / Banking Dashboard"
+                description="Review authenticated balances, transactions, and banking exports."
+                onClick={onOpenBanking}
+              />
+            </div>
+          </section>
+        )}
       </div>
     </section>
+  );
+}
+
+function AdminControlCard({
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-36 w-full cursor-pointer items-start justify-between gap-4 rounded-2xl border border-stone-800 bg-stone-900 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-500/40 hover:bg-stone-800 hover:shadow-xl hover:shadow-amber-500/5"
+    >
+      <span className="flex min-w-0 items-start gap-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-stone-950 shadow-lg shadow-amber-500/20">
+          {icon}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-base font-black text-white sm:text-lg">{title}</span>
+          <span className="mt-2 block text-sm leading-6 text-stone-400">{description}</span>
+        </span>
+      </span>
+      <ArrowUpRight className="h-5 w-5 shrink-0 text-stone-600 transition-colors group-hover:text-amber-400" />
+    </button>
   );
 }
 
