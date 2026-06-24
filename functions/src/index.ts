@@ -118,9 +118,9 @@ app.get("/v1/status", (_req, res) => {
 app.get("/api/banking/connect", rateLimiter({ windowMs: 60_000, max: 12 }), async (req, res, next) => {
   try {
     const user = await requireFirebaseUser(req);
-    const bank = parseBank(getFirstQueryValue(req.query.bank));
-    const responseMode = normalizeResponseMode(getFirstQueryValue(req.query.response));
-    const returnTo = sanitizeReturnTo(getFirstQueryValue(req.query.returnTo));
+    const bank = parseBank(getFirstQueryValue(req.query.bank as unknown));
+    const responseMode = normalizeResponseMode(getFirstQueryValue(req.query.response as unknown));
+    const returnTo = sanitizeReturnTo(getFirstQueryValue(req.query.returnTo as unknown));
     const authUrl = buildAuthorizeUrl(bank, user.uid, returnTo);
 
     if (responseMode === "redirect") {
@@ -615,15 +615,16 @@ function extractBearerToken(req: Request): string | undefined {
   return token || undefined;
 }
 
-function getFirstQueryValue(value: string | string[] | undefined): string | undefined {
+function getFirstQueryValue(value: unknown): string | undefined {
   if (Array.isArray(value)) {
-    return value[0];
+    const first = value[0];
+    return typeof first === "string" ? first.trim() || undefined : undefined;
   }
-  return value?.trim() || undefined;
+  return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
 function readCallbackParam(req: Request, key: "code" | "state" | "error" | "error_description") {
-  const queryValue = getFirstQueryValue(req.query[key] as string | string[] | undefined);
+  const queryValue = getFirstQueryValue(req.query[key] as unknown);
   if (queryValue) {
     return queryValue;
   }

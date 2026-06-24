@@ -19,6 +19,7 @@ import Cart from './components/Cart';
 import AdminPanel from './components/AdminPanel';
 import Footer from './components/Footer';
 import AuthModal from './components/AuthModal';
+import BankingDashboard from './components/BankingDashboard';
 import { INITIAL_MENU, INITIAL_REVIEWS } from './data/initialData';
 import { useAuth } from './hooks/useAuth';
 
@@ -32,7 +33,7 @@ type CheckoutArgs = [
 
 export default function App() {
   const { user, loading: authLoading } = useAuth();
-  const [activeView, setActiveView] = useState<'client' | 'admin'>('client');
+  const [activeView, setActiveView] = useState<'client' | 'admin' | 'banking'>('client');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
@@ -57,6 +58,7 @@ export default function App() {
     reject: (error: Error) => void;
     args: CheckoutArgs;
   } | null>(null);
+  const pendingProtectedViewRef = useRef<'banking' | null>(null);
 
   useEffect(() => {
     localStorage.setItem('shaurmyan_menu', JSON.stringify(menuItems));
@@ -208,11 +210,44 @@ export default function App() {
   const handleAuthModalClose = () => {
     const pending = pendingCheckoutRef.current;
     pendingCheckoutRef.current = null;
+    pendingProtectedViewRef.current = null;
     setAuthModalOpen(false);
 
     if (pending) {
       pending.reject(new Error('Authentication is required to complete checkout.'));
     }
+  };
+
+  const handleOpenBanking = () => {
+    if (authLoading) {
+      return;
+    }
+
+    if (user) {
+      setActiveView('banking');
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      return;
+    }
+
+    pendingProtectedViewRef.current = 'banking';
+    setAuthModalOpen(true);
+  };
+
+  const handleAuthSuccess = () => {
+    if (pendingCheckoutRef.current) {
+      void resumePendingCheckout();
+      return;
+    }
+
+    if (pendingProtectedViewRef.current === 'banking') {
+      pendingProtectedViewRef.current = null;
+      setActiveView('banking');
+      setAuthModalOpen(false);
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      return;
+    }
+
+    setAuthModalOpen(false);
   };
 
   const handlePlaceOrder = async (
@@ -306,6 +341,7 @@ export default function App() {
           setActiveView(view);
           window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
         }}
+        onOpenBanking={handleOpenBanking}
         onScrollTo={handleScrollTo}
       />
 
@@ -317,7 +353,7 @@ export default function App() {
             <Menu menuItems={menuItems} onAddToCart={handleAddToCart} />
             <Reviews reviews={reviews} onAddReview={handleAddReview} />
           </>
-        ) : (
+        ) : activeView === 'admin' ? (
           <AdminPanel
             menuItems={menuItems}
             reviews={reviews}
@@ -330,6 +366,37 @@ export default function App() {
             onApproveReview={handleApproveReview}
             onDeleteReview={handleDeleteReview}
           />
+        ) : user ? (
+          <BankingDashboard
+            onRefresh={() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onDownloadStatement={() => {
+              console.log('Download statement requested');
+            }}
+            onExportSummary={() => {
+              console.log('Export summary requested');
+            }}
+          />
+        ) : (
+          <section className="min-h-[60vh] bg-stone-950 text-stone-100 charcoal-grid-bg flex items-center justify-center px-4">
+            <div className="max-w-md w-full rounded-3xl border border-stone-800 bg-stone-950/90 p-8 text-center shadow-2xl">
+              <span className="block text-amber-500 font-black text-xs uppercase tracking-widest font-mono mb-2">
+                Secure Access
+              </span>
+              <h2 className="text-2xl font-black text-white">Banking requires sign-in</h2>
+              <p className="mt-3 text-sm text-stone-400 leading-relaxed">
+                Sign in to view balances, transactions, and statements. Your banking data stays behind the authenticated session.
+              </p>
+              <button
+                type="button"
+                onClick={handleOpenBanking}
+                className="mt-6 w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-sm shadow-xl transition-all duration-200 cursor-pointer"
+              >
+                Sign in to continue
+              </button>
+            </div>
+          </section>
         )}
       </main>
 
@@ -346,9 +413,7 @@ export default function App() {
       <AuthModal
         isOpen={authModalOpen}
         onClose={handleAuthModalClose}
-        onSuccess={() => {
-          void resumePendingCheckout();
-        }}
+        onSuccess={handleAuthSuccess}
       />
 
       {activeView === 'client' && <Footer />}
