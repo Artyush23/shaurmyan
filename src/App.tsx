@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 import {
   doc,
   setDoc,
@@ -30,6 +31,55 @@ type CheckoutArgs = [
   'cash' | 'card_courier' | 'card_online',
   string?
 ];
+
+const SITE_NAME = 'ShaurmYAN';
+const SITE_TITLE = 'ShaurmYAN | Premium Shaurma & Street Food in Tbilisi';
+const SITE_TITLE_GE = 'ShaurmYAN | პრემიუმ შაურმა და სტრიტ ფუდი თბილისში';
+const SITE_DESCRIPTION =
+  'Order premium shaurma, grilled street food, and fast delivery from ShaurmYAN in Tbilisi. Fresh ingredients, bold flavor, and a polished checkout experience.';
+const SITE_DESCRIPTION_GE =
+  'შეუკვეთე პრემიუმ შაურმა და სტრიტ ფუდი ShaurmYAN-იდან თბილისში. სწრაფი მიწოდება, ხარისხიანი ინგრედიენტები და განსაკუთრებული გემო.';
+
+function getSiteUrl() {
+  return typeof window !== 'undefined' ? window.location.origin : 'https://shaurmyan.ge';
+}
+
+function getShareImageUrl() {
+  return `${getSiteUrl()}/goliath-shaurma.png`;
+}
+
+function getSchemaJsonLd() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': ['Restaurant', 'FoodEstablishment'],
+    name: SITE_NAME,
+    alternateName: 'ShaurmYAN Georgia',
+    url: getSiteUrl(),
+    image: getShareImageUrl(),
+    description: SITE_DESCRIPTION,
+    priceRange: '$',
+    servesCuisine: ['Shawarma', 'Street Food', 'Fast Casual'],
+    geo: {
+      '@type': 'GeoCoordinates',
+      latitude: 41.7151,
+      longitude: 44.8271,
+    },
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: 'Tbilisi',
+      addressCountry: 'GE',
+    },
+    openingHoursSpecification: [
+      {
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+        opens: '10:00',
+        closes: '23:30',
+      },
+    ],
+    sameAs: [],
+  };
+}
 
 export default function App() {
   const { user, loading: authLoading } = useAuth();
@@ -330,9 +380,60 @@ export default function App() {
   };
 
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const siteUrl = getSiteUrl();
+  const shareImageUrl = getShareImageUrl();
+  const schemaJsonLd = getSchemaJsonLd();
+  const isHomeView = activeView === 'client';
+
+  const seoTitle =
+    activeView === 'banking'
+      ? `${SITE_NAME} Banking | Secure Account Overview`
+      : activeView === 'admin'
+        ? `${SITE_NAME} Admin | Restaurant Operations`
+        : SITE_TITLE;
+
+  const seoDescription =
+    activeView === 'banking'
+      ? 'Securely review connected balances, transactions, and exportable statements in the ShaurmYAN banking dashboard.'
+      : activeView === 'admin'
+        ? 'Manage menu items, orders, and reviews in the ShaurmYAN operations dashboard.'
+        : SITE_DESCRIPTION;
 
   return (
     <div className="min-h-screen flex flex-col justify-between selection:bg-amber-500 selection:text-stone-950">
+      <Helmet htmlAttributes={{ lang: isHomeView ? 'ka' : 'en' }}>
+        <title>{seoTitle}</title>
+        <meta name="description" content={seoDescription} />
+        <link rel="canonical" href={siteUrl} />
+        <meta
+          name="keywords"
+          content="ShaurmYAN, shaurma Tbilisi, street food Tbilisi, premium shaurma, delivery Tbilisi, Georgian fast food"
+        />
+        <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+
+        {isHomeView && (
+          <>
+            <meta property="og:title" content={SITE_TITLE} />
+            <meta property="og:description" content={`${SITE_DESCRIPTION} ${SITE_DESCRIPTION_GE}`} />
+            <meta property="og:image" content={shareImageUrl} />
+            <meta property="og:type" content="website" />
+            <meta property="og:url" content={siteUrl} />
+            <meta property="og:site_name" content={SITE_NAME} />
+            <meta property="og:locale" content="ka_GE" />
+            <meta property="og:locale:alternate" content="en_US" />
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content={SITE_TITLE} />
+            <meta name="twitter:description" content={SITE_DESCRIPTION} />
+            <meta name="twitter:image" content={shareImageUrl} />
+            <meta name="theme-color" content="#0c0a09" />
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaJsonLd) }}
+            />
+          </>
+        )}
+      </Helmet>
+
       <Navbar
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
