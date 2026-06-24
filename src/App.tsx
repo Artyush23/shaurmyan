@@ -482,9 +482,7 @@ export default function App() {
         onOpenCart={() => setIsCartOpen(true)}
         activeView={activeView}
         onChangeView={handleChangeView}
-        onOpenBanking={handleOpenBanking}
         onScrollTo={handleScrollTo}
-        isAdminUser={isAdminUser}
         isAuthenticated={Boolean(user)}
         onOpenAuth={() => setAuthModalOpen(true)}
       />
@@ -527,7 +525,11 @@ export default function App() {
             />
           </RequireAdmin>
         ) : activeView === 'profile' && user ? (
-          <UserProfile onSignedOut={handleSignedOut} />
+          <UserProfile
+            onSignedOut={handleSignedOut}
+            onOpenAdmin={() => handleChangeView('admin')}
+            onOpenBanking={handleOpenBanking}
+          />
         ) : (
           <section className="min-h-[60vh] bg-stone-950 text-stone-100 charcoal-grid-bg flex items-center justify-center px-4">
             <div className="max-w-md w-full rounded-3xl border border-stone-800 bg-stone-950/90 p-8 text-center shadow-2xl">

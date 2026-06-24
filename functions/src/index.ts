@@ -22,6 +22,8 @@ interface BankConfig {
   authorizeUrlEnvName: "TBC_OAUTH_AUTHORIZE_URL" | "BOG_OAUTH_AUTHORIZE_URL";
   tokenUrlEnvName: "TBC_OAUTH_TOKEN_URL" | "BOG_OAUTH_TOKEN_URL";
   scopeEnvName: "TBC_OAUTH_SCOPE" | "BOG_OAUTH_SCOPE";
+  accountsUrlEnvName: "TBC_ACCOUNTS_URL" | "BOG_ACCOUNTS_URL";
+  transactionsUrlEnvName: "TBC_TRANSACTIONS_URL" | "BOG_TRANSACTIONS_URL";
 }
 
 type ValidationIssue = {
@@ -53,6 +55,8 @@ const BANK_CONFIG: Record<SupportedBank, BankConfig> = {
     authorizeUrlEnvName: "TBC_OAUTH_AUTHORIZE_URL",
     tokenUrlEnvName: "TBC_OAUTH_TOKEN_URL",
     scopeEnvName: "TBC_OAUTH_SCOPE",
+    accountsUrlEnvName: "TBC_ACCOUNTS_URL",
+    transactionsUrlEnvName: "TBC_TRANSACTIONS_URL",
   },
   bog: {
     clientIdEnvName: "BOG_OAUTH_CLIENT_ID",
@@ -60,6 +64,8 @@ const BANK_CONFIG: Record<SupportedBank, BankConfig> = {
     authorizeUrlEnvName: "BOG_OAUTH_AUTHORIZE_URL",
     tokenUrlEnvName: "BOG_OAUTH_TOKEN_URL",
     scopeEnvName: "BOG_OAUTH_SCOPE",
+    accountsUrlEnvName: "BOG_ACCOUNTS_URL",
+    transactionsUrlEnvName: "BOG_TRANSACTIONS_URL",
   },
 };
 
@@ -187,6 +193,48 @@ app.get("/api/banking/callback", rateLimiter({ windowMs: 60_000, max: 20 }), asy
   }
 });
 
+app.get("/api/banking/accounts", rateLimiter({ windowMs: 60_000, max: 30 }), async (req, res) => {
+  try {
+    const user = await requireAdminUser(req);
+    const providers = await readConnectedBankProviders(user.uid);
+    const accounts = await fetchConnectedBankResources(
+      providers,
+      "accounts",
+      req.requestId
+    );
+
+    res.status(200).json({
+      ok: true,
+      accounts,
+      providers: Object.keys(providers),
+      fetchedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    sendRouteError(error, req, res, "accounts");
+  }
+});
+
+app.get("/api/banking/transactions", rateLimiter({ windowMs: 60_000, max: 30 }), async (req, res) => {
+  try {
+    const user = await requireAdminUser(req);
+    const providers = await readConnectedBankProviders(user.uid);
+    const transactions = await fetchConnectedBankResources(
+      providers,
+      "transactions",
+      req.requestId
+    );
+
+    res.status(200).json({
+      ok: true,
+      transactions,
+      providers: Object.keys(providers),
+      fetchedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    sendRouteError(error, req, res, "transactions");
+  }
+});
+
 app.post("/v1/open-banking/:bank/token", rateLimiter({ windowMs: 60_000, max: 12 }), async (req, res, next) => {
   try {
     const bank = parseBank(req.params.bank);
@@ -217,6 +265,316 @@ async function requireFirebaseUser(req: Request) {
   } catch {
     throw new ApiError(401, "unauthenticated", "Firebase authentication failed.");
   }
+}
+
+async function requireAdminUser(req: Request) {
+  const user = await requireFirebaseUser(req);
+  const claimRole = typeof user.role === "string" ? user.role : null;
+  const hasAdminClaim = user.admin === true || claimRole === "admin";
+
+  if (hasAdminClaim) {
+    return user;
+  }
+
+  try {
+    const profileSnapshot = await firestore.doc(`users/${user.uid}`).get();
+    const profile = profileSnapshot.data();
+    const hasAdminProfile =
+      profile?.role === "admin" ||
+      profile?.isAdmin === true;
+
+    if (hasAdminProfile) {
+      return user;
+    }
+  } catch (error) {
+    logger.error("Failed to resolve banking admin profile", {
+      requestId: req.requestId,
+      uid: user.uid,
+      error,
+    });
+    throw new ApiError(
+      503,
+      "admin_profile_unavailable",
+      "The admin profile could not be verified right now."
+    );
+  }
+
+  throw new ApiError(
+    403,
+    "admin_required",
+    "Administrator access is required for banking data."
+  );
+}
+
+async function readConnectedBankProviders(
+  uid: string
+): Promise<Partial<Record<SupportedBank, TokenBundle>>> {
+  const snapshot = await firestore.doc(`users/${uid}/banking/tokens`).get();
+  if (!snapshot.exists) {
+    throw new ApiError(
+      409,
+      "bank_not_connected",
+      "No Open Banking connection was found. Connect TBC or BOG before loading banking data."
+    );
+  }
+
+  const data = snapshot.data();
+  const providersValue = data?.providers;
+  if (!isPlainObject(providersValue)) {
+    throw new ApiError(
+      409,
+      "invalid_banking_connection",
+      "The stored Open Banking connection is incomplete. Reconnect the bank account."
+    );
+  }
+
+  const providers: Partial<Record<SupportedBank, TokenBundle>> = {};
+  for (const bank of ["tbc", "bog"] as const) {
+    const value = providersValue[bank];
+    if (!isPlainObject(value)) continue;
+
+    const accessToken = stringOrNull(value.accessToken);
+    if (!accessToken) continue;
+
+    const expiresAt = value.expiresAt instanceof Timestamp ? value.expiresAt : null;
+    if (expiresAt && expiresAt.toMillis() <= Date.now()) {
+      throw new ApiError(
+        401,
+        "bank_token_expired",
+        `${bank.toUpperCase()} access has expired. Reconnect the bank account to continue.`,
+        { bank }
+      );
+    }
+
+    providers[bank] = value as unknown as TokenBundle;
+  }
+
+  if (Object.keys(providers).length === 0) {
+    throw new ApiError(
+      409,
+      "bank_not_connected",
+      "No usable bank access token was found. Reconnect TBC or BOG."
+    );
+  }
+
+  return providers;
+}
+
+async function fetchConnectedBankResources(
+  providers: Partial<Record<SupportedBank, TokenBundle>>,
+  resource: "accounts" | "transactions",
+  requestId: string
+): Promise<Record<string, unknown>[]> {
+  const requests = Object.entries(providers).map(async ([bankValue, tokenBundle]) => {
+    const bank = parseBank(bankValue);
+    if (!tokenBundle?.accessToken) {
+      throw new ApiError(
+        409,
+        "missing_bank_token",
+        `${bank.toUpperCase()} does not have a usable access token.`,
+        { bank }
+      );
+    }
+
+    const config = BANK_CONFIG[bank];
+    const envName =
+      resource === "accounts"
+        ? config.accountsUrlEnvName
+        : config.transactionsUrlEnvName;
+    const endpoint = readRequiredBankingUrl(envName);
+    const payload = await fetchBankResource({
+      bank,
+      endpoint,
+      accessToken: tokenBundle.accessToken,
+      requestId,
+      resource,
+    });
+
+    return extractBankResourceItems(payload, resource).map((item) => ({
+      ...item,
+      bank: item.bank ?? bank.toUpperCase(),
+      provider: item.provider ?? bank,
+    }));
+  });
+
+  const results = await Promise.all(requests);
+  return results.flat();
+}
+
+async function fetchBankResource(input: {
+  bank: SupportedBank;
+  endpoint: string;
+  accessToken: string;
+  requestId: string;
+  resource: "accounts" | "transactions";
+}): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    const response = await fetch(input.endpoint, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${input.accessToken}`,
+        "X-Request-Id": input.requestId,
+      },
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    const payload = safeJsonParse(text);
+
+    if (!response.ok) {
+      throw new ApiError(
+        502,
+        "bank_api_error",
+        `${input.bank.toUpperCase()} ${input.resource} request failed.`,
+        {
+          bank: input.bank,
+          resource: input.resource,
+          upstreamStatus: response.status,
+          upstreamResponse: sanitizeUpstreamDetails(payload ?? text),
+        }
+      );
+    }
+
+    if (payload === null) {
+      throw new ApiError(
+        502,
+        "invalid_bank_response",
+        `${input.bank.toUpperCase()} returned an invalid JSON response for ${input.resource}.`,
+        { bank: input.bank, resource: input.resource }
+      );
+    }
+
+    return payload;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(
+        504,
+        "bank_api_timeout",
+        `${input.bank.toUpperCase()} ${input.resource} request timed out.`,
+        { bank: input.bank, resource: input.resource }
+      );
+    }
+
+    throw new ApiError(
+      502,
+      "bank_api_unreachable",
+      `${input.bank.toUpperCase()} ${input.resource} service could not be reached.`,
+      {
+        bank: input.bank,
+        resource: input.resource,
+        reason: error instanceof Error ? error.message : "Unknown network error",
+      }
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractBankResourceItems(
+  payload: unknown,
+  resource: "accounts" | "transactions"
+): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.filter(isPlainObject);
+  }
+
+  if (!isPlainObject(payload)) {
+    throw new ApiError(
+      502,
+      "invalid_bank_response",
+      `The bank ${resource} response has an unsupported format.`
+    );
+  }
+
+  const direct = payload[resource];
+  if (Array.isArray(direct)) {
+    return direct.filter(isPlainObject);
+  }
+
+  const data = payload.data;
+  if (Array.isArray(data)) {
+    return data.filter(isPlainObject);
+  }
+  if (isPlainObject(data) && Array.isArray(data[resource])) {
+    return data[resource].filter(isPlainObject);
+  }
+
+  throw new ApiError(
+    502,
+    "invalid_bank_response",
+    `The bank response did not contain a ${resource} array.`
+  );
+}
+
+function readRequiredBankingUrl(name: string): string {
+  try {
+    return readRequiredUrl(name);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw new ApiError(
+        503,
+        "banking_configuration_missing",
+        `Banking endpoint configuration is missing or invalid: ${name}.`,
+        { environmentVariable: name }
+      );
+    }
+    throw error;
+  }
+}
+
+function sanitizeUpstreamDetails(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.slice(0, 500);
+  }
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const sanitized = { ...value };
+  for (const key of ["access_token", "refresh_token", "token", "authorization"]) {
+    if (key in sanitized) sanitized[key] = "[redacted]";
+  }
+  return sanitized;
+}
+
+function sendRouteError(
+  error: unknown,
+  req: Request,
+  res: Response,
+  resource: "accounts" | "transactions"
+) {
+  const apiError =
+    error instanceof ApiError
+      ? error
+      : new ApiError(
+          500,
+          "banking_request_failed",
+          `The banking ${resource} request failed unexpectedly.`,
+          { reason: error instanceof Error ? error.message : "Unknown server error" }
+        );
+
+  logger.error("Banking data route failure", {
+    requestId: req.requestId,
+    path: req.path,
+    uid: extractBearerToken(req) ? "authenticated-token-present" : "missing-token",
+    code: apiError.code,
+    statusCode: apiError.statusCode,
+    error,
+  });
+
+  res.status(apiError.statusCode).json({
+    ok: false,
+    error: {
+      code: apiError.code,
+      message: apiError.message,
+      details: apiError.details ?? null,
+      requestId: req.requestId,
+    },
+  });
 }
 
 function securityHeaders(req: Request, res: Response, next: NextFunction) {
@@ -476,7 +834,7 @@ function resolveCallbackUrlFromEnv(): string {
   return readRequiredUrl("BANKING_CALLBACK_URL");
 }
 
-function buildFinishUrl(returnTo: string | undefined, bank: SupportedBank): string | null {
+function buildFinishUrl(returnTo: string | null | undefined, bank: SupportedBank): string | null {
   if (!returnTo) {
     return null;
   }
