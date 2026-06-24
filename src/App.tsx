@@ -1,6 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db, isAdminEmail } from './firebase';
 import { MenuItem, CartItem, Order, Review } from './types';
-import { INITIAL_MENU, INITIAL_REVIEWS, INITIAL_ORDERS } from './data/initialData';
 
 // Component imports
 import Navbar from './components/Navbar';
@@ -11,21 +18,30 @@ import Reviews from './components/Reviews';
 import Cart from './components/Cart';
 import AdminPanel from './components/AdminPanel';
 import Footer from './components/Footer';
+import AuthModal from './components/AuthModal';
+import BankingDashboard from './components/BankingDashboard';
+import { INITIAL_MENU, INITIAL_REVIEWS } from './data/initialData';
+import { useAuth } from './hooks/useAuth';
+
+type CheckoutArgs = [
+  string,
+  string,
+  string,
+  'cash' | 'card_courier' | 'card_online',
+  string?
+];
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'client' | 'admin'>('client');
+  const { user, loading: authLoading } = useAuth();
+  const [activeView, setActiveView] = useState<'client' | 'admin' | 'banking'>('client');
   const [isCartOpen, setIsCartOpen] = useState(false);
-  
-  // Dynamic persistent states using localStorage so modifications stick around!
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
   const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
     const saved = localStorage.getItem('shaurmyan_menu');
     return saved ? JSON.parse(saved) : INITIAL_MENU;
   });
 
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('shaurmyan_orders');
-    return saved ? JSON.parse(saved) : INITIAL_ORDERS;
-  });
 
   const [reviews, setReviews] = useState<Review[]>(() => {
     const saved = localStorage.getItem('shaurmyan_reviews');
@@ -37,14 +53,16 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Save states to local storage on modification
+  const pendingCheckoutRef = useRef<{
+    resolve: () => void;
+    reject: (error: Error) => void;
+    args: CheckoutArgs;
+  } | null>(null);
+  const pendingProtectedViewRef = useRef<'banking' | null>(null);
+
   useEffect(() => {
     localStorage.setItem('shaurmyan_menu', JSON.stringify(menuItems));
   }, [menuItems]);
-
-  useEffect(() => {
-    localStorage.setItem('shaurmyan_orders', JSON.stringify(orders));
-  }, [orders]);
 
   useEffect(() => {
     localStorage.setItem('shaurmyan_reviews', JSON.stringify(reviews));
@@ -54,7 +72,8 @@ export default function App() {
     localStorage.setItem('shaurmyan_cart', JSON.stringify(cartItems));
   }, [cartItems]);
 
-  // Scroll target handler helper
+  const isAdminUser = isAdminEmail(user?.email ?? null);
+
   const handleScrollTo = (elementId: string) => {
     const el = document.getElementById(elementId);
     if (el) {
@@ -62,7 +81,6 @@ export default function App() {
     }
   };
 
-  // 1. Cart Management logic
   const handleAddToCart = (
     item: MenuItem,
     selectedSize: string,
@@ -71,48 +89,51 @@ export default function App() {
     quantity: number
   ) => {
     const cartId = `${item.id}-${selectedSize}-${addedCustomizations.sort().join(',')}`;
-    
-    setCartItems(prev => {
-      const existingIdx = prev.findIndex(ci => ci.id === cartId);
+
+    setCartItems((prev) => {
+      const existingIdx = prev.findIndex((ci) => ci.id === cartId);
       if (existingIdx > -1) {
         const updated = [...prev];
         updated[existingIdx].quantity += quantity;
         return updated;
-      } else {
-        return [...prev, {
+      }
+
+      return [
+        ...prev,
+        {
           id: cartId,
           menuItem: item,
           selectedSize,
           selectedPrice,
           addedCustomizations,
-          quantity
-        }];
-      }
+          quantity,
+        },
+      ];
     });
 
-    // Automatically trigger cart open feedback
     setIsCartOpen(true);
   };
 
   const handleUpdateCartQuantity = (cartId: string, delta: number) => {
-    setCartItems(prev => prev.map(item => {
-      if (item.id === cartId) {
-        const newQ = item.quantity + delta;
-        return newQ > 0 ? { ...item, quantity: newQ } : item;
-      }
-      return item;
-    }));
+    setCartItems((prev) =>
+      prev.map((item) => {
+        if (item.id === cartId) {
+          const newQ = item.quantity + delta;
+          return newQ > 0 ? { ...item, quantity: newQ } : item;
+        }
+        return item;
+      })
+    );
   };
 
   const handleRemoveCartItem = (cartId: string) => {
-    setCartItems(prev => prev.filter(item => item.id !== cartId));
+    setCartItems((prev) => prev.filter((item) => item.id !== cartId));
   };
 
   const handleClearCart = () => {
     setCartItems([]);
   };
 
-  // 2. Client Reviews Action Submissions
   const handleAddReview = (author: string, rating: number, comment: string) => {
     const newRev: Review = {
       id: `rev-${Date.now()}`,
@@ -120,132 +141,223 @@ export default function App() {
       rating,
       comment,
       createdAt: new Date().toISOString(),
-      approved: false // Pending moderator approval from backoffice!
+      approved: false,
     };
-    setReviews(prev => [newRev, ...prev]);
+    setReviews((prev) => [newRev, ...prev]);
   };
 
-  // 3. Client Checkout Order placement
-  const handlePlaceOrder = (
+  const submitOrderNow = async (
     customerName: string,
     customerPhone: string,
     customerAddress: string,
     paymentMethod: 'cash' | 'card_courier' | 'card_online',
     notes?: string
   ) => {
-    const newOrder: Order = {
-      id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-      customerName,
-      customerPhone,
-      customerAddress,
-      paymentMethod,
-      items: cartItems.map(item => ({
-        name: item.menuItem.name,
-        size: item.selectedSize,
-        extras: item.addedCustomizations.map(cId => {
-          const cObj = item.menuItem.customizations.find(c => c.id === cId);
-          return cObj?.name || cId;
-        }),
-        price: item.selectedPrice,
-        quantity: item.quantity
-      })),
-      totalPrice: cartItems.reduce((sum, item) => sum + (item.selectedPrice * item.quantity), 0) + 
-        (cartItems.reduce((sum, item) => sum + (item.selectedPrice * item.quantity), 0) > 30 ? 0 : 3.00),
-      status: 'new',
-      createdAt: new Date().toISOString(),
-      notes
-    };
+    const itemsTotal = cartItems.reduce(
+      (sum, item) => sum + item.selectedPrice * item.quantity,
+      0
+    );
+    const deliveryFee = itemsTotal > 30 ? 0 : 3.0;
+    const orderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    setOrders(prev => [newOrder, ...prev]);
+    try {
+      await setDoc(doc(db, 'orders', orderId), {
+        customerName,
+        customerPhone,
+        customerAddress,
+        paymentMethod,
+        items: cartItems.map((item) => ({
+          name: item.menuItem.name,
+          size: item.selectedSize,
+          extras: item.addedCustomizations.map((cId) => {
+            const cObj = item.menuItem.customizations.find((c) => c.id === cId);
+            return cObj?.name || cId;
+          }),
+          price: item.selectedPrice,
+          quantity: item.quantity,
+        })),
+        totalPrice: itemsTotal + deliveryFee,
+        status: 'new',
+        createdAt: serverTimestamp(),
+        notes: notes ?? null,
+      });
+    } catch (error) {
+      console.error('Failed to place order in Firestore:', error);
+      throw error;
+    }
   };
 
-  // 4. BACKOFFICE ADMIN CONTROL HANDLERS
-  const handleUpdateOrderStatus = (orderId: string, status: Order['status']) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+  const resumePendingCheckout = async () => {
+    const pending = pendingCheckoutRef.current;
+    if (!pending) {
+      setAuthModalOpen(false);
+      return;
+    }
+
+    pendingCheckoutRef.current = null;
+
+    try {
+      const [customerName, customerPhone, customerAddress, paymentMethod, notes] = pending.args;
+      await submitOrderNow(customerName, customerPhone, customerAddress, paymentMethod, notes);
+      pending.resolve();
+    } catch (error) {
+      pending.reject(error instanceof Error ? error : new Error('Checkout failed.'));
+    } finally {
+      setAuthModalOpen(false);
+    }
   };
 
-  const handleDeleteOrder = (orderId: string) => {
-    setOrders(prev => prev.filter(o => o.id !== orderId));
+  const handleAuthModalClose = () => {
+    const pending = pendingCheckoutRef.current;
+    pendingCheckoutRef.current = null;
+    pendingProtectedViewRef.current = null;
+    setAuthModalOpen(false);
+
+    if (pending) {
+      pending.reject(new Error('Authentication is required to complete checkout.'));
+    }
+  };
+
+  const handleOpenBanking = () => {
+    if (authLoading) {
+      return;
+    }
+
+    if (user) {
+      setActiveView('banking');
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      return;
+    }
+
+    pendingProtectedViewRef.current = 'banking';
+    setAuthModalOpen(true);
+  };
+
+  const handleAuthSuccess = () => {
+    if (pendingCheckoutRef.current) {
+      void resumePendingCheckout();
+      return;
+    }
+
+    if (pendingProtectedViewRef.current === 'banking') {
+      pendingProtectedViewRef.current = null;
+      setActiveView('banking');
+      setAuthModalOpen(false);
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      return;
+    }
+
+    setAuthModalOpen(false);
+  };
+
+  const handlePlaceOrder = async (
+    customerName: string,
+    customerPhone: string,
+    customerAddress: string,
+    paymentMethod: 'cash' | 'card_courier' | 'card_online',
+    notes?: string
+  ) => {
+    if (authLoading) {
+      throw new Error('Authentication is still loading. Please wait a moment and try again.');
+    }
+
+    if (!user) {
+      return new Promise<void>((resolve, reject) => {
+        pendingCheckoutRef.current = {
+          resolve,
+          reject,
+          args: [customerName, customerPhone, customerAddress, paymentMethod, notes],
+        };
+        setAuthModalOpen(true);
+      });
+    }
+
+    return submitOrderNow(customerName, customerPhone, customerAddress, paymentMethod, notes);
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, status: Order['status']) => {
+    if (!isAdminUser) return;
+
+    try {
+      await updateDoc(doc(db, 'orders', orderId), { status });
+    } catch (error) {
+      console.error('Failed to update order status:', error);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!isAdminUser) return;
+
+    try {
+      await deleteDoc(doc(db, 'orders', orderId));
+    } catch (error) {
+      console.error('Failed to delete order:', error);
+    }
   };
 
   const handleUpdateMenuPrice = (itemId: string, newPrice: number) => {
-    setMenuItems(prev => prev.map(item => {
-      if (item.id === itemId) {
-        return {
-          ...item,
-          price: newPrice,
-          sizes: item.sizes.map((s, idx) => ({
-            ...s,
-            price: idx === 0 ? newPrice : Number((newPrice * s.multiplier).toFixed(2))
-          }))
-        };
-      }
-      return item;
-    }));
+    setMenuItems((prev) =>
+      prev.map((item) => {
+        if (item.id === itemId) {
+          return {
+            ...item,
+            price: newPrice,
+            sizes: item.sizes.map((s, idx) => ({
+              ...s,
+              price: idx === 0 ? newPrice : Number((newPrice * s.multiplier).toFixed(2)),
+            })),
+          };
+        }
+        return item;
+      })
+    );
   };
 
   const handleAddNewMenuItem = (newItem: MenuItem) => {
-    setMenuItems(prev => [...prev, newItem]);
+    setMenuItems((prev) => [...prev, newItem]);
   };
 
   const handleDeleteMenuItem = (itemId: string) => {
-    setMenuItems(prev => prev.filter(item => item.id !== itemId));
+    setMenuItems((prev) => prev.filter((item) => item.id !== itemId));
   };
 
   const handleApproveReview = (reviewId: string) => {
-    setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, approved: true } : r));
+    setReviews((prev) => prev.map((r) => (r.id === reviewId ? { ...r, approved: true } : r)));
   };
 
   const handleDeleteReview = (reviewId: string) => {
-    setReviews(prev => prev.filter(r => r.id !== reviewId));
+    setReviews((prev) => prev.filter((r) => r.id !== reviewId));
   };
 
-  // Calculated count helper
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="min-h-screen flex flex-col justify-between selection:bg-amber-500 selection:text-stone-950">
-      
-      {/* Universal Stick Navigation */}
       <Navbar
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
         activeView={activeView}
         onChangeView={(view) => {
           setActiveView(view);
-          window.scrollTo({ top: 0, behavior: 'instant' as any });
+          window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
         }}
+        onOpenBanking={handleOpenBanking}
         onScrollTo={handleScrollTo}
       />
 
-      {/* Primary Dynamic View rendering */}
       <main className="flex-1">
         {activeView === 'client' ? (
           <>
-            {/* 1. HERO SECTION */}
             <Hero onScrollToMenu={() => handleScrollTo('menu')} />
-
-            {/* 2. TIMELINE ANATOMY SECTION */}
             <ScrollShowcase />
-
-            {/* 3. DINING CUSTOMIZABLE MENU GRID */}
-            <Menu
-              menuItems={menuItems}
-              onAddToCart={handleAddToCart}
-            />
-
-            {/* 4. CUSTOMER TESTIMONIALS SECTION */}
-            <Reviews
-              reviews={reviews}
-              onAddReview={handleAddReview}
-            />
+            <Menu menuItems={menuItems} onAddToCart={handleAddToCart} />
+            <Reviews reviews={reviews} onAddReview={handleAddReview} />
           </>
-        ) : (
-          /* BACKOFFICE MANAGEMENT CONTAINER PANEL */
+        ) : activeView === 'admin' ? (
           <AdminPanel
-            orders={orders}
             menuItems={menuItems}
             reviews={reviews}
+            isAdminAuthorized={isAdminUser}
             onUpdateOrderStatus={handleUpdateOrderStatus}
             onDeleteOrder={handleDeleteOrder}
             onUpdateMenuPrice={handleUpdateMenuPrice}
@@ -254,10 +366,40 @@ export default function App() {
             onApproveReview={handleApproveReview}
             onDeleteReview={handleDeleteReview}
           />
+        ) : user ? (
+          <BankingDashboard
+            onRefresh={() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onDownloadStatement={() => {
+              console.log('Download statement requested');
+            }}
+            onExportSummary={() => {
+              console.log('Export summary requested');
+            }}
+          />
+        ) : (
+          <section className="min-h-[60vh] bg-stone-950 text-stone-100 charcoal-grid-bg flex items-center justify-center px-4">
+            <div className="max-w-md w-full rounded-3xl border border-stone-800 bg-stone-950/90 p-8 text-center shadow-2xl">
+              <span className="block text-amber-500 font-black text-xs uppercase tracking-widest font-mono mb-2">
+                Secure Access
+              </span>
+              <h2 className="text-2xl font-black text-white">Banking requires sign-in</h2>
+              <p className="mt-3 text-sm text-stone-400 leading-relaxed">
+                Sign in to view balances, transactions, and statements. Your banking data stays behind the authenticated session.
+              </p>
+              <button
+                type="button"
+                onClick={handleOpenBanking}
+                className="mt-6 w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-sm shadow-xl transition-all duration-200 cursor-pointer"
+              >
+                Sign in to continue
+              </button>
+            </div>
+          </section>
         )}
       </main>
 
-      {/* Cart Drawer Carriage Side drawer */}
       <Cart
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
@@ -268,7 +410,12 @@ export default function App() {
         onPlaceOrder={handlePlaceOrder}
       />
 
-      {/* Universal branding footer */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={handleAuthModalClose}
+        onSuccess={handleAuthSuccess}
+      />
+
       {activeView === 'client' && <Footer />}
     </div>
   );

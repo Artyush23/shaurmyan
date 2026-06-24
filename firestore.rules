@@ -1,11 +1,39 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Admin-only collection – only users with the custom `admin` claim can read/write
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'artyushcharchyan0@gmail.com';
+    }
+
+    match /orders/{orderId} {
+      allow create: if request.resource.data.keys().hasAll([
+          'customerName',
+          'customerPhone',
+          'customerAddress',
+          'paymentMethod',
+          'items',
+          'totalPrice',
+          'status',
+          'createdAt',
+        ])
+        && request.resource.data.status == 'new'
+        && request.resource.data.totalPrice is number
+        && request.resource.data.items is list
+        && request.resource.data.paymentMethod in ['cash', 'card_courier', 'card_online'];
+
+      allow read, update, delete: if isAdmin();
+    }
+
     match /adminPanel/{docId} {
       allow read, write: if request.auth != null && request.auth.token.admin == true;
     }
-    // Deny everything else by default
+
+    match /users/{userId} {
+      allow create, read, update, delete: if request.auth != null
+        && request.auth.uid == userId;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
