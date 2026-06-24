@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
+  OAuthProvider,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -52,12 +53,21 @@ export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
+export const appleProvider = new OAuthProvider("apple.com");
+appleProvider.addScope("email");
+appleProvider.addScope("name");
+
 export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  phoneNumber?: string | null;
   photoURL: string | null;
   providerIds: string[];
+  role?: "user" | "admin";
+  isAdmin?: boolean;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
   lastLoginAt: Timestamp | null;
@@ -82,6 +92,8 @@ export async function upsertUserProfile(user: User): Promise<void> {
     displayName: user.displayName ?? null,
     photoURL: user.photoURL ?? null,
     providerIds: normalizeProviderIds(user),
+    role: user.email === ADMIN_EMAIL ? "admin" : "user",
+    isAdmin: user.email === ADMIN_EMAIL,
     updatedAt: serverTimestamp(),
     lastLoginAt: serverTimestamp(),
   };
@@ -97,6 +109,42 @@ export async function upsertUserProfile(user: User): Promise<void> {
   });
 }
 
+export interface UpdateUserProfileInput {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+}
+
+export async function updateUserProfile(
+  user: User,
+  input: UpdateUserProfileInput
+): Promise<void> {
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
+  const phoneNumber = input.phoneNumber.trim();
+  const displayName = [firstName, lastName].filter(Boolean).join(" ") || user.displayName || "";
+
+  if (displayName && displayName !== user.displayName) {
+    await updateProfile(user, { displayName });
+  }
+
+  await setDoc(
+    doc(db, "users", user.uid),
+    {
+      uid: user.uid,
+      email: user.email ?? null,
+      displayName: displayName || null,
+      firstName: firstName || null,
+      lastName: lastName || null,
+      phoneNumber: phoneNumber || null,
+      photoURL: user.photoURL ?? null,
+      providerIds: normalizeProviderIds(user),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 export async function signInWithEmail(
   email: string,
   password: string
@@ -107,21 +155,32 @@ export async function signInWithEmail(
 export async function signUpWithEmail(
   email: string,
   password: string,
-  displayName?: string
+  profileInput?: UpdateUserProfileInput
 ): Promise<UserCredential> {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
+  const displayName = profileInput
+    ? [profileInput.firstName.trim(), profileInput.lastName.trim()].filter(Boolean).join(" ")
+    : "";
 
-  if (displayName?.trim()) {
-    await updateProfile(credential.user, { displayName: displayName.trim() });
+  if (displayName) {
+    await updateProfile(credential.user, { displayName });
   }
 
   await upsertUserProfile(credential.user);
+
+  if (profileInput) {
+    await updateUserProfile(credential.user, profileInput);
+  }
 
   return credential;
 }
 
 export async function loginWithGoogle(): Promise<UserCredential> {
   return signInWithPopup(auth, googleProvider);
+}
+
+export async function loginWithApple(): Promise<UserCredential> {
+  return signInWithPopup(auth, appleProvider);
 }
 
 export async function resetPassword(email: string): Promise<void> {

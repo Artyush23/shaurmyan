@@ -40,7 +40,7 @@ export interface Order {
   customerName: string;
   customerPhone: string;
   customerAddress: string;
-  paymentMethod: 'cash' | 'card_courier' | 'card_online';
+  paymentMethod: 'card_online' | 'cash_on_delivery';
   items: {
     name: string;
     size: string;

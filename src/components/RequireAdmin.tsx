@@ -1,33 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { getCurrentUser } from "../firebase";
-
-const ADMIN_EMAIL = "artyushcharchyan0@gmail.com";
+import { type ReactNode } from "react";
+import { useAuth } from "../hooks/useAuth";
 
 export default function RequireAdmin({ children }: { children: ReactNode }) {
-  const [isChecking, setIsChecking] = useState(true);
-  const [isAllowed, setIsAllowed] = useState(false);
+  const { loading, isAdmin } = useAuth();
 
-  useEffect(() => {
-    let active = true;
-
-    getCurrentUser()
-      .then((user) => {
-        if (!active) return;
-        setIsAllowed(Boolean(user && user.email === ADMIN_EMAIL));
-        setIsChecking(false);
-      })
-      .catch(() => {
-        if (!active) return;
-        setIsAllowed(false);
-        setIsChecking(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  if (isChecking) {
+  if (loading) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center text-sm text-stone-400">
         Checking admin access...
@@ -35,7 +12,7 @@ export default function RequireAdmin({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!isAllowed) {
+  if (!isAdmin) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center text-center px-6">
         <p className="max-w-sm text-sm text-stone-500">

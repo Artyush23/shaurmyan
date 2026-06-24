@@ -9,16 +9,20 @@ import {
   UtensilsCrossed,
   MessageSquare,
   Landmark,
+  LogIn,
+  UserRound,
 } from 'lucide-react';
-import { getCurrentUser, isAdminEmail } from '../firebase';
 
 interface NavbarProps {
   cartCount: number;
   onOpenCart: () => void;
-  activeView: 'client' | 'admin' | 'banking';
-  onChangeView: (view: 'client' | 'admin' | 'banking') => void;
+  activeView: 'client' | 'admin' | 'banking' | 'profile';
+  onChangeView: (view: 'client' | 'admin' | 'banking' | 'profile') => void;
   onOpenBanking: () => void;
   onScrollTo: (elementId: string) => void;
+  isAdminUser: boolean;
+  isAuthenticated: boolean;
+  onOpenAuth: () => void;
 }
 
 type NavItem = {
@@ -35,24 +39,16 @@ export default function Navbar({
   onChangeView,
   onOpenBanking,
   onScrollTo,
+  isAdminUser,
+  isAuthenticated,
+  onOpenAuth,
 }: NavbarProps) {
   const { scrollYProgress } = useScroll();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    getCurrentUser()
-      .then((user) => {
-        setUserEmail(user?.email ?? null);
-      })
-      .catch(() => setUserEmail(null));
-  }, [activeView]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [activeView]);
-
-  const isUserAdmin = isAdminEmail(userEmail);
 
   const desktopItems = useMemo<NavItem[]>(() => {
     if (activeView !== 'client') return [];
@@ -73,13 +69,17 @@ export default function Navbar({
         icon: <MessageSquare className="w-4 h-4 text-amber-500/80" />,
         action: () => onScrollTo('reviews'),
       },
-      {
-        label: 'ანგარიშები',
-        icon: <Landmark className="w-4 h-4 text-amber-500/80" />,
-        action: onOpenBanking,
-      },
+      ...(isAdminUser
+        ? [
+            {
+              label: 'ანგარიშები',
+              icon: <Landmark className="w-4 h-4 text-amber-500/80" />,
+              action: onOpenBanking,
+            },
+          ]
+        : []),
     ];
-  }, [activeView, onOpenBanking, onScrollTo]);
+  }, [activeView, isAdminUser, onOpenBanking, onScrollTo]);
 
   const mobileItems = useMemo<NavItem[]>(() => {
     const items: NavItem[] = [];
@@ -101,15 +101,19 @@ export default function Navbar({
           icon: <MessageSquare className="w-4 h-4" />,
           action: () => onScrollTo('reviews'),
         },
-        {
-          label: 'ანგარიშები',
-          icon: <Landmark className="w-4 h-4" />,
-          action: onOpenBanking,
-        }
+        ...(isAdminUser
+          ? [
+              {
+                label: 'ანგარიშები',
+                icon: <Landmark className="w-4 h-4" />,
+                action: onOpenBanking,
+              },
+            ]
+          : [])
       );
     }
 
-    if (activeView === 'banking') {
+    if ((activeView === 'banking' && isAdminUser) || activeView === 'profile') {
       items.push({
         label: 'საიტზე დაბრუნება',
         icon: <Landmark className="w-4 h-4" />,
@@ -117,7 +121,7 @@ export default function Navbar({
       });
     }
 
-    if (activeView === 'admin') {
+    if (activeView === 'admin' && isAdminUser) {
       items.push({
         label: 'საიტზე დაბრუნება',
         icon: <Landmark className="w-4 h-4" />,
@@ -125,7 +129,7 @@ export default function Navbar({
       });
     }
 
-    if (isUserAdmin) {
+    if (isAdminUser) {
       items.push({
         label: activeView === 'admin' ? 'ადმინი' : 'ადმინ პანელი',
         icon: <Settings className={`w-4 h-4 ${activeView === 'admin' ? 'animate-spin' : ''}`} />,
@@ -133,8 +137,14 @@ export default function Navbar({
       });
     }
 
+    items.push({
+      label: isAuthenticated ? 'პროფილი / Profile' : 'შესვლა / Sign In',
+      icon: isAuthenticated ? <UserRound className="w-4 h-4" /> : <LogIn className="w-4 h-4" />,
+      action: isAuthenticated ? () => onChangeView('profile') : onOpenAuth,
+    });
+
     return items;
-  }, [activeView, isUserAdmin, onChangeView, onOpenBanking, onScrollTo]);
+  }, [activeView, isAdminUser, isAuthenticated, onChangeView, onOpenAuth, onOpenBanking, onScrollTo]);
 
   return (
     <>
@@ -184,7 +194,7 @@ export default function Navbar({
                 </button>
               ))}
 
-              {activeView === 'banking' && (
+              {(activeView === 'banking' || activeView === 'profile') && (
                 <button
                   type="button"
                   onClick={() => onChangeView('client')}
@@ -221,7 +231,7 @@ export default function Navbar({
                 </>
               )}
 
-              {isUserAdmin && (
+              {isAdminUser && (
                 <button
                   type="button"
                   onClick={() => onChangeView(activeView === 'client' ? 'admin' : 'client')}
@@ -237,6 +247,19 @@ export default function Navbar({
                   <span>{activeView === 'admin' ? 'ადმინი' : 'ადმინ პანელი'}</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={isAuthenticated ? () => onChangeView('profile') : onOpenAuth}
+                className={`hidden cursor-pointer items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-black transition-all sm:flex sm:text-sm ${
+                  activeView === 'profile'
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+                    : 'border-stone-800 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-amber-400'
+                }`}
+              >
+                {isAuthenticated ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+                <span>{isAuthenticated ? 'პროფილი / Profile' : 'შესვლა / Sign In'}</span>
+              </button>
 
               <button
                 type="button"
