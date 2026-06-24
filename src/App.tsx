@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   doc,
   setDoc,
@@ -6,8 +6,7 @@ import {
   deleteDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db, isAdminEmail } from './firebase';
+import { db, isAdminEmail } from './firebase';
 import { MenuItem, CartItem, Order, Review } from './types';
 
 // Component imports
@@ -19,12 +18,23 @@ import Reviews from './components/Reviews';
 import Cart from './components/Cart';
 import AdminPanel from './components/AdminPanel';
 import Footer from './components/Footer';
+import AuthModal from './components/AuthModal';
 import { INITIAL_MENU, INITIAL_REVIEWS } from './data/initialData';
+import { useAuth } from './hooks/useAuth';
+
+type CheckoutArgs = [
+  string,
+  string,
+  string,
+  'cash' | 'card_courier' | 'card_online',
+  string?
+];
 
 export default function App() {
+  const { user, loading: authLoading } = useAuth();
   const [activeView, setActiveView] = useState<'client' | 'admin'>('client');
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isAdminUser, setIsAdminUser] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
     const saved = localStorage.getItem('shaurmyan_menu');
@@ -42,6 +52,12 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const pendingCheckoutRef = useRef<{
+    resolve: () => void;
+    reject: (error: Error) => void;
+    args: CheckoutArgs;
+  } | null>(null);
+
   useEffect(() => {
     localStorage.setItem('shaurmyan_menu', JSON.stringify(menuItems));
   }, [menuItems]);
@@ -54,12 +70,7 @@ export default function App() {
     localStorage.setItem('shaurmyan_cart', JSON.stringify(cartItems));
   }, [cartItems]);
 
-  useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      setIsAdminUser(isAdminEmail(user?.email ?? null));
-    });
-    return unsubAuth;
-  }, []);
+  const isAdminUser = isAdminEmail(user?.email ?? null);
 
   const handleScrollTo = (elementId: string) => {
     const el = document.getElementById(elementId);
@@ -133,7 +144,7 @@ export default function App() {
     setReviews((prev) => [newRev, ...prev]);
   };
 
-  const handlePlaceOrder = async (
+  const submitOrderNow = async (
     customerName: string,
     customerPhone: string,
     customerAddress: string,
@@ -172,6 +183,61 @@ export default function App() {
       console.error('Failed to place order in Firestore:', error);
       throw error;
     }
+  };
+
+  const resumePendingCheckout = async () => {
+    const pending = pendingCheckoutRef.current;
+    if (!pending) {
+      setAuthModalOpen(false);
+      return;
+    }
+
+    pendingCheckoutRef.current = null;
+
+    try {
+      const [customerName, customerPhone, customerAddress, paymentMethod, notes] = pending.args;
+      await submitOrderNow(customerName, customerPhone, customerAddress, paymentMethod, notes);
+      pending.resolve();
+    } catch (error) {
+      pending.reject(error instanceof Error ? error : new Error('Checkout failed.'));
+    } finally {
+      setAuthModalOpen(false);
+    }
+  };
+
+  const handleAuthModalClose = () => {
+    const pending = pendingCheckoutRef.current;
+    pendingCheckoutRef.current = null;
+    setAuthModalOpen(false);
+
+    if (pending) {
+      pending.reject(new Error('Authentication is required to complete checkout.'));
+    }
+  };
+
+  const handlePlaceOrder = async (
+    customerName: string,
+    customerPhone: string,
+    customerAddress: string,
+    paymentMethod: 'cash' | 'card_courier' | 'card_online',
+    notes?: string
+  ) => {
+    if (authLoading) {
+      throw new Error('Authentication is still loading. Please wait a moment and try again.');
+    }
+
+    if (!user) {
+      return new Promise<void>((resolve, reject) => {
+        pendingCheckoutRef.current = {
+          resolve,
+          reject,
+          args: [customerName, customerPhone, customerAddress, paymentMethod, notes],
+        };
+        setAuthModalOpen(true);
+      });
+    }
+
+    return submitOrderNow(customerName, customerPhone, customerAddress, paymentMethod, notes);
   };
 
   const handleUpdateOrderStatus = async (orderId: string, status: Order['status']) => {
@@ -275,6 +341,14 @@ export default function App() {
         onRemoveItem={handleRemoveCartItem}
         onClearCart={handleClearCart}
         onPlaceOrder={handlePlaceOrder}
+      />
+
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={handleAuthModalClose}
+        onSuccess={() => {
+          void resumePendingCheckout();
+        }}
       />
 
       {activeView === 'client' && <Footer />}
