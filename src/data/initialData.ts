@@ -196,7 +196,7 @@ export const INITIAL_ORDERS: Order[] = [
     customerName: 'დავით კახიძე',
     customerPhone: '599 45 61 23',
     customerAddress: 'ვაჟა-ფშაველას გამზ. 24, ბინა 15',
-    paymentMethod: 'card_courier',
+    paymentMethod: 'card_online',
     items: [
       { name: 'გოლიათი შაურმა „იან“ 👑', size: 'გიგანტი (50სმ)', extras: ['ორმაგი ყველი 🧀', 'ორმაგი ხორცი 🥩'], price: 30.50, quantity: 1 },
       { name: 'კოკა-კოლა ორიგინალი🥤', size: 'ბოთლი 0.5ლ', extras: [], price: 3.50, quantity: 2 }
@@ -211,7 +211,7 @@ export const INITIAL_ORDERS: Order[] = [
     customerName: 'თამარ ბერიძე',
     customerPhone: '555 88 12 99',
     customerAddress: 'ილია ჭავჭავაძის გამზ. 40',
-    paymentMethod: 'cash',
+    paymentMethod: 'card_online',
     items: [
       { name: 'სამეფო შაურმა ყველით 🧀', size: 'საშუალო', extras: ['ორმაგი ხორცი 🥩'], price: 21.70, quantity: 2 },
       { name: 'ცივი ტანის სასმელი 🥛', size: 'საშუალო (0.4ლ)', extras: [], price: 3.00, quantity: 1 }

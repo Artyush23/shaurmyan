@@ -7,7 +7,7 @@ import {
   deleteDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db, isAdminEmail } from './firebase';
+import { db } from './firebase';
 import { MenuItem, CartItem, Order, Review } from './types';
 
 // Component imports
@@ -21,6 +21,8 @@ import AdminPanel from './components/AdminPanel';
 import Footer from './components/Footer';
 import AuthModal from './components/AuthModal';
 import BankingDashboard from './components/BankingDashboard';
+import RequireAdmin from './components/RequireAdmin';
+import UserProfile from './components/UserProfile';
 import { INITIAL_MENU, INITIAL_REVIEWS } from './data/initialData';
 import { useAuth } from './hooks/useAuth';
 
@@ -28,7 +30,7 @@ type CheckoutArgs = [
   string,
   string,
   string,
-  'cash' | 'card_courier' | 'card_online',
+  Order['paymentMethod'],
   string?
 ];
 
@@ -82,8 +84,8 @@ function getSchemaJsonLd() {
 }
 
 export default function App() {
-  const { user, loading: authLoading } = useAuth();
-  const [activeView, setActiveView] = useState<'client' | 'admin' | 'banking'>('client');
+  const { user, loading: authLoading, isAdmin: isAdminUser } = useAuth();
+  const [activeView, setActiveView] = useState<'client' | 'admin' | 'banking' | 'profile'>('client');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
@@ -91,8 +93,6 @@ export default function App() {
     const saved = localStorage.getItem('shaurmyan_menu');
     return saved ? JSON.parse(saved) : INITIAL_MENU;
   });
-
-
   const [reviews, setReviews] = useState<Review[]>(() => {
     const saved = localStorage.getItem('shaurmyan_reviews');
     return saved ? JSON.parse(saved) : INITIAL_REVIEWS;
@@ -108,7 +108,7 @@ export default function App() {
     reject: (error: Error) => void;
     args: CheckoutArgs;
   } | null>(null);
-  const pendingProtectedViewRef = useRef<'banking' | null>(null);
+  const pendingProtectedViewRef = useRef<'banking' | 'profile' | null>(null);
 
   useEffect(() => {
     localStorage.setItem('shaurmyan_menu', JSON.stringify(menuItems));
@@ -121,8 +121,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('shaurmyan_cart', JSON.stringify(cartItems));
   }, [cartItems]);
-
-  const isAdminUser = isAdminEmail(user?.email ?? null);
 
   const handleScrollTo = (elementId: string) => {
     const el = document.getElementById(elementId);
@@ -200,7 +198,7 @@ export default function App() {
     customerName: string,
     customerPhone: string,
     customerAddress: string,
-    paymentMethod: 'cash' | 'card_courier' | 'card_online',
+    paymentMethod: Order['paymentMethod'],
     notes?: string
   ) => {
     const itemsTotal = cartItems.reduce(
@@ -216,6 +214,8 @@ export default function App() {
         customerPhone,
         customerAddress,
         paymentMethod,
+        userId: user?.uid ?? null,
+        userEmail: user?.email ?? null,
         items: cartItems.map((item) => ({
           name: item.menuItem.name,
           size: item.selectedSize,
@@ -273,14 +273,52 @@ export default function App() {
       return;
     }
 
-    if (user) {
+    if (isAdminUser) {
       setActiveView('banking');
       window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
       return;
     }
 
-    pendingProtectedViewRef.current = 'banking';
+    return;
+  };
+
+  const handleOpenProfile = () => {
+    if (authLoading) {
+      return;
+    }
+
+    if (user) {
+      setActiveView('profile');
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      return;
+    }
+
+    pendingProtectedViewRef.current = 'profile';
     setAuthModalOpen(true);
+  };
+
+  const handleSignedOut = () => {
+    pendingCheckoutRef.current = null;
+    pendingProtectedViewRef.current = null;
+    setAuthModalOpen(false);
+    setIsCartOpen(false);
+    setActiveView('client');
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  };
+
+  const handleChangeView = (view: 'client' | 'admin' | 'banking' | 'profile') => {
+    if ((view === 'admin' || view === 'banking') && !isAdminUser) {
+      return;
+    }
+
+    if (view === 'profile' && !user) {
+      pendingProtectedViewRef.current = 'profile';
+      setAuthModalOpen(true);
+      return;
+    }
+
+    setActiveView(view);
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   };
 
   const handleAuthSuccess = () => {
@@ -289,9 +327,10 @@ export default function App() {
       return;
     }
 
-    if (pendingProtectedViewRef.current === 'banking') {
+    if (pendingProtectedViewRef.current === 'banking' || pendingProtectedViewRef.current === 'profile') {
+      const nextView = pendingProtectedViewRef.current;
       pendingProtectedViewRef.current = null;
-      setActiveView('banking');
+      setActiveView(nextView);
       setAuthModalOpen(false);
       window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
       return;
@@ -304,7 +343,7 @@ export default function App() {
     customerName: string,
     customerPhone: string,
     customerAddress: string,
-    paymentMethod: 'cash' | 'card_courier' | 'card_online',
+    paymentMethod: Order['paymentMethod'],
     notes?: string
   ) => {
     if (authLoading) {
@@ -388,6 +427,8 @@ export default function App() {
   const seoTitle =
     activeView === 'banking'
       ? `${SITE_NAME} Banking | Secure Account Overview`
+      : activeView === 'profile'
+        ? `${SITE_NAME} Profile | Account and Saved Cards`
       : activeView === 'admin'
         ? `${SITE_NAME} Admin | Restaurant Operations`
         : SITE_TITLE;
@@ -395,6 +436,8 @@ export default function App() {
   const seoDescription =
     activeView === 'banking'
       ? 'Securely review connected balances, transactions, and exportable statements in the ShaurmYAN banking dashboard.'
+      : activeView === 'profile'
+        ? 'Manage your ShaurmYAN profile, saved payment cards, and recent online order history.'
       : activeView === 'admin'
         ? 'Manage menu items, orders, and reviews in the ShaurmYAN operations dashboard.'
         : SITE_DESCRIPTION;
@@ -438,12 +481,12 @@ export default function App() {
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
         activeView={activeView}
-        onChangeView={(view) => {
-          setActiveView(view);
-          window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-        }}
+        onChangeView={handleChangeView}
         onOpenBanking={handleOpenBanking}
         onScrollTo={handleScrollTo}
+        isAdminUser={isAdminUser}
+        isAuthenticated={Boolean(user)}
+        onOpenAuth={() => setAuthModalOpen(true)}
       />
 
       <main className="flex-1">
@@ -455,43 +498,49 @@ export default function App() {
             <Reviews reviews={reviews} onAddReview={handleAddReview} />
           </>
         ) : activeView === 'admin' ? (
-          <AdminPanel
-            menuItems={menuItems}
-            reviews={reviews}
-            isAdminAuthorized={isAdminUser}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-            onDeleteOrder={handleDeleteOrder}
-            onUpdateMenuPrice={handleUpdateMenuPrice}
-            onAddNewMenuItem={handleAddNewMenuItem}
-            onDeleteMenuItem={handleDeleteMenuItem}
-            onApproveReview={handleApproveReview}
-            onDeleteReview={handleDeleteReview}
-          />
-        ) : user ? (
-          <BankingDashboard
-            onRefresh={() => {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onDownloadStatement={() => {
-              console.log('Download statement requested');
-            }}
-            onExportSummary={() => {
-              console.log('Export summary requested');
-            }}
-          />
+          <RequireAdmin>
+            <AdminPanel
+              menuItems={menuItems}
+              reviews={reviews}
+              isAdminAuthorized={isAdminUser}
+              onUpdateOrderStatus={handleUpdateOrderStatus}
+              onDeleteOrder={handleDeleteOrder}
+              onUpdateMenuPrice={handleUpdateMenuPrice}
+              onAddNewMenuItem={handleAddNewMenuItem}
+              onDeleteMenuItem={handleDeleteMenuItem}
+              onApproveReview={handleApproveReview}
+              onDeleteReview={handleDeleteReview}
+            />
+          </RequireAdmin>
+        ) : activeView === 'banking' ? (
+          <RequireAdmin>
+            <BankingDashboard
+              onRefresh={() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onDownloadStatement={() => {
+                console.log('Download statement requested');
+              }}
+              onExportSummary={() => {
+                console.log('Export summary requested');
+              }}
+            />
+          </RequireAdmin>
+        ) : activeView === 'profile' && user ? (
+          <UserProfile onSignedOut={handleSignedOut} />
         ) : (
           <section className="min-h-[60vh] bg-stone-950 text-stone-100 charcoal-grid-bg flex items-center justify-center px-4">
             <div className="max-w-md w-full rounded-3xl border border-stone-800 bg-stone-950/90 p-8 text-center shadow-2xl">
               <span className="block text-amber-500 font-black text-xs uppercase tracking-widest font-mono mb-2">
                 Secure Access
               </span>
-              <h2 className="text-2xl font-black text-white">Banking requires sign-in</h2>
+              <h2 className="text-2xl font-black text-white">Sign-in required</h2>
               <p className="mt-3 text-sm text-stone-400 leading-relaxed">
-                Sign in to view balances, transactions, and statements. Your banking data stays behind the authenticated session.
+                Sign in to open your protected ShaurmYAN profile, saved cards, and account activity.
               </p>
               <button
                 type="button"
-                onClick={handleOpenBanking}
+                onClick={handleOpenProfile}
                 className="mt-6 w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-sm shadow-xl transition-all duration-200 cursor-pointer"
               >
                 Sign in to continue
@@ -504,6 +553,8 @@ export default function App() {
       <Cart
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
+        isAuthenticated={Boolean(user)}
+        onRequireAuth={() => setAuthModalOpen(true)}
         cartItems={cartItems}
         onUpdateQuantity={handleUpdateCartQuantity}
         onRemoveItem={handleRemoveCartItem}

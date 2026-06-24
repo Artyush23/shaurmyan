@@ -184,9 +184,8 @@ export default function AdminPanel({
   };
 
   const paymentLabel = (method: Order['paymentMethod']) => {
-    if (method === 'cash') return 'ნაღდი';
-    if (method === 'card_courier') return 'ბარათი (კურიერი)';
-    return 'ონლაინ ბარათი';
+    if (method === 'card_online') return 'ონლაინ ბარათი';
+    return 'ნაღდი ფულით გადახდა';
   };
 
   if (!isAdminAuthorized) {

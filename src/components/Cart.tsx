@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CartItem } from '../types';
-import { X, Trash2, ShoppingBasket, Truck, CheckCircle2 } from 'lucide-react';
+import { X, Trash2, ShoppingBasket, Truck, CheckCircle2, CreditCard, Banknote } from 'lucide-react';
 import CardPaymentModal from './CardPaymentModal';
+
+type CheckoutPaymentMethod = 'card_online' | 'cash_on_delivery';
 
 interface CartProps {
   isOpen: boolean;
   onClose: () => void;
+  isAuthenticated: boolean;
+  onRequireAuth: () => void;
   cartItems: CartItem[];
   onUpdateQuantity: (cartId: string, delta: number) => void;
   onRemoveItem: (cartId: string) => void;
@@ -15,7 +19,7 @@ interface CartProps {
     customerName: string,
     customerPhone: string,
     customerAddress: string,
-    paymentMethod: 'cash' | 'card_courier' | 'card_online',
+    paymentMethod: CheckoutPaymentMethod,
     notes?: string
   ) => Promise<void>;
 }
@@ -23,6 +27,8 @@ interface CartProps {
 export default function Cart({
   isOpen,
   onClose,
+  isAuthenticated,
+  onRequireAuth,
   cartItems,
   onUpdateQuantity,
   onRemoveItem,
@@ -34,12 +40,13 @@ export default function Cart({
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card_courier' | 'card_online'>('cash');
+  const [isAwaitingAuth, setIsAwaitingAuth] = useState(false);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [showCardPayment, setShowCardPayment] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<CheckoutPaymentMethod>('card_online');
 
   // Math helper
   const itemsTotal = cartItems.reduce((acc, item) => {
@@ -49,8 +56,11 @@ export default function Cart({
   const deliveryFee = itemsTotal > 30 ? 0 : 3.00; // Free delivery for orders > ₾30
   const grandTotal = itemsTotal + deliveryFee;
 
-  const buildOrderNotes = (paidOnline = false): string | undefined => {
-    const paymentNote = paidOnline ? 'Paid via Verified Online Card' : undefined;
+  const buildOrderNotes = (): string | undefined => {
+    const paymentNote =
+      paymentMethod === 'card_online'
+        ? 'Paid via Verified Online Card'
+        : 'Cash payment selected for courier handoff';
     const trimmedNotes = notes.trim();
 
     if (trimmedNotes && paymentNote) {
@@ -59,7 +69,7 @@ export default function Cart({
     return trimmedNotes || paymentNote;
   };
 
-  const completeOrder = async (paidOnline = false) => {
+  const completeOrder = async () => {
     setSubmitError(null);
 
     try {
@@ -68,7 +78,7 @@ export default function Cart({
         phone,
         address,
         paymentMethod,
-        buildOrderNotes(paidOnline)
+        buildOrderNotes()
       );
     } catch {
       setSubmitError('შეკვეთის გაგზავნა ვერ მოხერხდა. სცადეთ ხელახლა.');
@@ -78,6 +88,7 @@ export default function Cart({
 
     setIsSubmitting(false);
     setShowCardPayment(false);
+    setIsAwaitingAuth(false);
     setOrderSuccess(true);
     onClearCart();
 
@@ -85,7 +96,7 @@ export default function Cart({
     setPhone('');
     setAddress('');
     setNotes('');
-    setPaymentMethod('cash');
+    setPaymentMethod('card_online');
 
     setTimeout(() => {
       setOrderSuccess(false);
@@ -93,25 +104,39 @@ export default function Cart({
     }, 5000);
   };
 
+  React.useEffect(() => {
+    if (isAuthenticated && isAwaitingAuth) {
+      setIsAwaitingAuth(false);
+      setSubmitError(null);
+      setShowCardPayment(true);
+    }
+  }, [isAuthenticated, isAwaitingAuth]);
+
   const handleSubmitOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (cartItems.length === 0) return;
     if (!name.trim() || !phone.trim() || !address.trim()) return;
+
+    if (!isAuthenticated) {
+      setSubmitError('ონლაინ შეკვეთის გასაგრძელებლად ჯერ შედით ან დარეგისტრირდით.');
+      setIsAwaitingAuth(true);
+      onRequireAuth();
+      return;
+    }
+
+    setIsSubmitting(true);
 
     if (paymentMethod === 'card_online') {
       setShowCardPayment(true);
       return;
     }
 
-    setIsSubmitting(true);
-
-    setIsSubmitting(true);
-      void completeOrder(false);
+    void completeOrder();
   };
 
   const handleCardPaymentSuccess = () => {
     setIsSubmitting(true);
-    void completeOrder(true);
+    void completeOrder();
   };
 
   return (
@@ -340,44 +365,33 @@ export default function Cart({
                           />
                         </div>
 
-                        {/* Payment Selection Selector */}
-                        <div className="space-y-1.5 text-left">
-                          <span className="text-[10px] text-stone-400 font-mono font-bold uppercase tracking-wider block">გადახდის მეთოდი</span>
-                          <div className="grid grid-cols-3 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setPaymentMethod('cash')}
-                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all duration-200 cursor-pointer ${
-                                paymentMethod === 'cash'
-                                  ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
-                                  : 'bg-white border-stone-200 text-stone-650 hover:bg-stone-50'
-                              }`}
-                            >
-                              💵 ნაღდი
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPaymentMethod('card_courier')}
-                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all duration-200 cursor-pointer ${
-                                paymentMethod === 'card_courier'
-                                  ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
-                                  : 'bg-white border-stone-200 text-stone-650 hover:bg-stone-50'
-                              }`}
-                            >
-                              💳 კურიერთან
-                            </button>
-                            <button
-                              type="button"
+                        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left">
+                          <span className="block text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400">
+                            გადახდის მეთოდი
+                          </span>
+                          <div className="mt-3 grid grid-cols-1 gap-2">
+                            <PaymentOption
+                              active={paymentMethod === 'card_online'}
+                              icon={<CreditCard className="h-4 w-4" />}
+                              title="Online Card Payment"
+                              description="Secure card checkout before delivery."
                               onClick={() => setPaymentMethod('card_online')}
-                              className={`py-2 rounded-xl text-[10px] font-bold border transition-all duration-200 cursor-pointer ${
-                                paymentMethod === 'card_online'
-                                  ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
-                                  : 'bg-white border-stone-200 text-stone-650 hover:bg-stone-50'
-                              }`}
-                            >
-                              🌐 ონლაინ
-                            </button>
+                            />
+                            {isAuthenticated && (
+                              <PaymentOption
+                                active={paymentMethod === 'cash_on_delivery'}
+                                icon={<Banknote className="h-4 w-4" />}
+                                title="ნაღდი ფულით გადახდა"
+                                description="Cash payment directly with the courier."
+                                onClick={() => setPaymentMethod('cash_on_delivery')}
+                              />
+                            )}
                           </div>
+                          {!isAuthenticated && (
+                            <p className="mt-3 text-[11px] leading-5 text-amber-100/80">
+                              Sign in to unlock courier cash payment. Guests continue through secure account checkout.
+                            </p>
+                          )}
                         </div>
 
                         {/* Place Order CTA Button */}
@@ -419,5 +433,44 @@ export default function Cart({
         onPaymentSuccess={handleCardPaymentSuccess}
       />
     </AnimatePresence>
+  );
+}
+
+function PaymentOption({
+  active,
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
+        active
+          ? 'border-amber-400 bg-amber-400/15 text-amber-100 shadow-lg shadow-amber-500/10'
+          : 'border-white/10 bg-white/[0.03] text-stone-200 hover:border-amber-400/30 hover:bg-white/[0.06]'
+      }`}
+      aria-pressed={active}
+    >
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+          active ? 'bg-amber-400 text-stone-950' : 'bg-stone-900 text-amber-300'
+        }`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs font-black leading-tight">{title}</span>
+        <span className="mt-1 block text-[10px] leading-4 text-stone-400">{description}</span>
+      </span>
+    </button>
   );
 }

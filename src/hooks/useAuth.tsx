@@ -10,6 +10,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import {
   auth,
   db,
+  isAdminEmail,
   signOutUser as firebaseSignOut,
   upsertUserProfile,
   type UserProfile,
@@ -22,6 +23,7 @@ interface AuthContextValue {
   profile: UserProfile | null;
   loading: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -87,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     loading,
     isAuthenticated: Boolean(user),
+    isAdmin: Boolean(profile?.isAdmin || profile?.role === "admin" || isAdminEmail(user?.email)),
     signOut,
   };
 
