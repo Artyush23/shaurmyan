@@ -70,11 +70,15 @@ export interface Order {
 
 export interface Review {
   id: string;
+  productId?: string;
+  userId?: string;
+  userName?: string;
   author: string;
   rating: number;
   comment: string;
   createdAt: string;
-  approved: boolean;
+  updatedAt?: string;
+  approved?: boolean;
 }
 
 export interface Notification {
