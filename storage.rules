@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in [
+          'artyushcharchyan0@gmail.com',
+          'atucharchyan23@gmail.com'
+        ];
+    }
+
+    match /products/{productId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin()
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

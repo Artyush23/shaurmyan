@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MenuItem, Order, Review } from '../types';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { auth, ADMIN_EMAIL, db } from '../firebase';
+import { auth, ADMIN_EMAIL, db, storage } from '../firebase';
 import { collection, onSnapshot, Timestamp } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { playNewOrderChime } from '../utils/adminChime';
 import {
   TrendingUp, ShoppingCart, MessageSquare, Plus, Trash2,
@@ -19,6 +21,7 @@ interface AdminPanelProps {
   onUpdateMenuPrice: (itemId: string, newPrice: number) => void;
   onUpdateMenuAvailability: (itemId: string, available: boolean) => void;
   onUpdateMenuDiscount: (itemId: string, discountPercent?: number) => void;
+  onUpdateMenuImage: (itemId: string, imageUrl: string) => void;
   onAddNewMenuItem: (newItem: MenuItem) => void;
   onDeleteMenuItem: (itemId: string) => void;
   onApproveReview: (reviewId: string) => void;
@@ -49,6 +52,26 @@ function mapFirestoreOrder(docId: string, data: Record<string, unknown>): Order 
   };
 }
 
+const MAX_PRODUCT_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
+const ACCEPTED_PRODUCT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+function validateProductImage(file: File): string | null {
+  if (!ACCEPTED_PRODUCT_IMAGE_TYPES.includes(file.type)) {
+    return 'Please upload a JPG, PNG, or WebP image.';
+  }
+
+  if (file.size > MAX_PRODUCT_IMAGE_SIZE_BYTES) {
+    return 'Product images must be 2 MB or smaller.';
+  }
+
+  return null;
+}
+
+function getProductImagePath(productId: string, file: File): string {
+  const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  return `products/${productId}/${Date.now()}.${extension}`;
+}
+
 export default function AdminPanel({
   menuItems,
   reviews,
@@ -58,6 +81,7 @@ export default function AdminPanel({
   onUpdateMenuPrice,
   onUpdateMenuAvailability,
   onUpdateMenuDiscount,
+  onUpdateMenuImage,
   onAddNewMenuItem,
   onDeleteMenuItem,
   onApproveReview,
@@ -80,6 +104,9 @@ export default function AdminPanel({
   const [newCat, setNewCat] = useState('classic');
   const [newAvailable, setNewAvailable] = useState(true);
   const [newDiscountPercent, setNewDiscountPercent] = useState('');
+  const [newImageFile, setNewImageFile] = useState<File | null>(null);
+  const [uploadingImageId, setUploadingImageId] = useState<string | null>(null);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdminAuthorized) {
@@ -194,6 +221,49 @@ export default function AdminPanel({
     return 'ნაღდი ფულით გადახდა';
   };
 
+  const uploadProductImage = async (productId: string, file: File) => {
+    const validationError = validateProductImage(file);
+    if (validationError) {
+      setImageUploadError(validationError);
+      return null;
+    }
+
+    setUploadingImageId(productId);
+    setImageUploadError(null);
+
+    try {
+      const imageRef = ref(storage, getProductImagePath(productId, file));
+      await uploadBytes(imageRef, file, { contentType: file.type });
+      const downloadUrl = await getDownloadURL(imageRef);
+
+      await setDoc(
+        doc(db, 'products', productId),
+        {
+          image: downloadUrl,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return downloadUrl;
+    } catch (error) {
+      console.error('Product image upload failed:', error);
+      setImageUploadError('Image upload failed. Please try again.');
+      return null;
+    } finally {
+      setUploadingImageId(null);
+    }
+  };
+
+  const handleExistingProductImageChange = async (itemId: string, file: File | null) => {
+    if (!file) return;
+
+    const downloadUrl = await uploadProductImage(itemId, file);
+    if (downloadUrl) {
+      onUpdateMenuImage(itemId, downloadUrl);
+    }
+  };
+
   if (!isAdminAuthorized) {
     return (
       <div className="min-h-screen bg-stone-900 text-stone-100 font-sans p-4 sm:p-8 relative charcoal-grid-bg flex items-center justify-center">
@@ -230,7 +300,7 @@ export default function AdminPanel({
     );
   }
 
-  const handleCreateMenuItem = (e: React.FormEvent) => {
+  const handleCreateMenuItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !newDesc.trim() || !newCat.trim()) return;
 
@@ -241,14 +311,23 @@ export default function AdminPanel({
         ? Math.min(discountPercent, 100)
         : undefined;
 
+    const productId = `men-${Date.now()}`;
+    let imageUrl = newImage;
+
+    if (newImageFile) {
+      const uploadedUrl = await uploadProductImage(productId, newImageFile);
+      if (!uploadedUrl) return;
+      imageUrl = uploadedUrl;
+    }
+
     const newItem: MenuItem = {
-      id: `men-${Date.now()}`,
+      id: productId,
       name: newTitle.trim(),
       nameEn: newTitle.trim(),
       description: newDesc.trim(),
       descriptionEn: newDesc.trim(),
       price: basePrice,
-      image: newImage,
+      image: imageUrl,
       category: newCat.trim(),
       available: newAvailable,
       discountPercent: normalizedDiscount,
@@ -263,6 +342,16 @@ export default function AdminPanel({
       ]
     };
 
+    await setDoc(
+      doc(db, 'products', newItem.id),
+      {
+        ...newItem,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
     onAddNewMenuItem(newItem);
     
     // Reset forms
@@ -272,6 +361,7 @@ export default function AdminPanel({
     setNewCat('classic');
     setNewAvailable(true);
     setNewDiscountPercent('');
+    setNewImageFile(null);
     setIsAddingItem(false);
   };
 
@@ -733,6 +823,34 @@ export default function AdminPanel({
                     </div>
 
                     <div className="space-y-1">
+                      <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">Product image</label>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          setNewImageFile(file);
+                          setImageUploadError(file ? validateProductImage(file) : null);
+                        }}
+                        className="w-full bg-stone-900 border border-stone-800 rounded-xl py-2 px-3 text-xs text-white file:mr-3 file:rounded-lg file:border-0 file:bg-amber-500 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-stone-950 focus:outline-none focus:border-amber-500"
+                      />
+                      <p className="text-[10px] text-stone-500">JPG, PNG, or WebP. Max 2 MB.</p>
+                    </div>
+
+                    {imageUploadError && (
+                      <p className="text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                        {imageUploadError}
+                      </p>
+                    )}
+
+                    {uploadingImageId && (
+                      <p className="text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 flex items-center gap-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+                        Uploading product image...
+                      </p>
+                    )}
+
+                    <div className="space-y-1">
                       <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">აღწერა</label>
                       <textarea
                         required
@@ -753,6 +871,7 @@ export default function AdminPanel({
                       </button>
                       <button
                         type="submit"
+                        disabled={Boolean(uploadingImageId) || Boolean(imageUploadError)}
                         className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-extrabold rounded-lg flex items-center space-x-1 transition-colors duration-200 cursor-pointer"
                       >
                         <Check className="w-4 h-4" />
@@ -763,6 +882,12 @@ export default function AdminPanel({
                 )}
               </AnimatePresence>
 
+              {imageUploadError && !isAddingItem && (
+                <p className="text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                  {imageUploadError}
+                </p>
+              )}
+
               {/* Menu items list view with price editor */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {menuItems.map(itm => (
@@ -771,12 +896,19 @@ export default function AdminPanel({
                     className="bg-stone-950/80 border border-stone-800 p-4 rounded-3xl flex items-center justify-between gap-4 text-left hover:border-stone-750 transition-colors"
                   >
                     <div className="flex items-center space-x-3">
-                      <img
-                        referrerPolicy="no-referrer"
-                        src={itm.image}
-                        alt={itm.name}
-                        className="w-16 h-16 rounded-2xl object-cover bg-stone-905"
-                      />
+                      <div className="relative w-16 h-16 shrink-0">
+                        <img
+                          referrerPolicy="no-referrer"
+                          src={itm.image}
+                          alt={itm.name}
+                          className="w-16 h-16 rounded-2xl object-cover bg-stone-905"
+                        />
+                        {uploadingImageId === itm.id && (
+                          <div className="absolute inset-0 rounded-2xl bg-stone-950/70 flex items-center justify-center">
+                            <Loader2 className="w-5 h-5 text-amber-400 animate-spin motion-reduce:animate-none" />
+                          </div>
+                        )}
+                      </div>
                       <div>
                         <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2.5 py-0.5 rounded-lg border border-amber-500/10 font-mono">
                           {itm.category.toUpperCase()}
@@ -803,6 +935,22 @@ export default function AdminPanel({
                     </div>
 
                     <div className="flex flex-wrap items-center justify-end gap-3">
+                      <div className="text-right">
+                        <span className="text-[9px] text-stone-550 block font-mono">IMAGE</span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={Boolean(uploadingImageId)}
+                          onChange={(e) => {
+                            void handleExistingProductImageChange(
+                              itm.id,
+                              e.target.files?.[0] ?? null
+                            );
+                            e.currentTarget.value = '';
+                          }}
+                          className="block w-28 text-[10px] text-stone-400 file:mr-1 file:rounded file:border-0 file:bg-stone-800 file:px-2 file:py-1 file:text-[10px] file:font-bold file:text-stone-200 disabled:opacity-50"
+                        />
+                      </div>
                       <div className="text-right">
                         <span className="text-[9px] text-stone-550 block font-mono">STATUS</span>
                         <select

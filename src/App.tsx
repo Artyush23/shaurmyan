@@ -422,6 +422,12 @@ export default function App() {
     );
   };
 
+  const handleUpdateMenuImage = (itemId: string, imageUrl: string) => {
+    setMenuItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, image: imageUrl } : item))
+    );
+  };
+
   const handleAddNewMenuItem = (newItem: MenuItem) => {
     setMenuItems((prev) => [...prev, newItem]);
   };
@@ -526,6 +532,7 @@ export default function App() {
               onUpdateMenuPrice={handleUpdateMenuPrice}
               onUpdateMenuAvailability={handleUpdateMenuAvailability}
               onUpdateMenuDiscount={handleUpdateMenuDiscount}
+              onUpdateMenuImage={handleUpdateMenuImage}
               onAddNewMenuItem={handleAddNewMenuItem}
               onDeleteMenuItem={handleDeleteMenuItem}
               onApproveReview={handleApproveReview}

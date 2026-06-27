@@ -3,7 +3,10 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function isAdmin() {
       return request.auth != null
-        && request.auth.token.email == 'artyushcharchyan0@gmail.com';
+        && request.auth.token.email in [
+          'artyushcharchyan0@gmail.com',
+          'atucharchyan23@gmail.com'
+        ];
     }
 
     match /orders/{orderId} {
@@ -32,6 +35,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow create, read, update, delete: if request.auth != null
         && request.auth.uid == userId;
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     match /{document=**} {
