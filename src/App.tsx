@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { MenuItem, CartItem, Order, Review } from './types';
+import { getOrderStatusLabel } from './utils/orders';
 
 // Component imports
 import Navbar from './components/Navbar';
@@ -196,6 +197,29 @@ export default function App() {
     setReviews((prev) => [newRev, ...prev]);
   };
 
+  const createNotification = async (input: {
+    userId: string;
+    role: 'admin' | 'user';
+    type: string;
+    title: string;
+    message: string;
+    orderId?: string;
+  }) => {
+    const notificationRef = doc(collection(db, 'notifications'));
+
+    await setDoc(notificationRef, {
+      id: notificationRef.id,
+      userId: input.userId,
+      role: input.role,
+      type: input.type,
+      title: input.title,
+      message: input.message,
+      read: false,
+      createdAt: serverTimestamp(),
+      orderId: input.orderId ?? null,
+    });
+  };
+
   const submitOrderNow = async (
     customerName: string,
     customerPhone: string,
@@ -244,6 +268,15 @@ export default function App() {
         status: 'pending',
         createdAt: serverTimestamp(),
         notes: notes ?? null,
+      });
+
+      await createNotification({
+        userId: 'admin',
+        role: 'admin',
+        type: 'order_created',
+        title: 'New order received',
+        message: `${trimmedName} placed order ${orderId} for ₾${(itemsTotal + deliveryFee).toFixed(2)}.`,
+        orderId,
       });
     } catch (error) {
       console.error('Failed to place order in Firestore:', error);
@@ -389,7 +422,19 @@ export default function App() {
         throw new Error('Order not found.');
       }
 
+      const orderData = snapshot.data() as Partial<Order>;
       await updateDoc(orderRef, { status });
+
+      if (orderData.userId) {
+        await createNotification({
+          userId: orderData.userId,
+          role: 'user',
+          type: 'order_status_changed',
+          title: 'Order status updated',
+          message: `Your order ${orderId} is now ${getOrderStatusLabel(status).toLowerCase()}.`,
+          orderId,
+        });
+      }
     } catch (error) {
       console.error('Failed to update order status:', error);
       throw error;
