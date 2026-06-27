@@ -63,6 +63,54 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /notifications/{notificationId} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll([
+          'id',
+          'userId',
+          'role',
+          'type',
+          'title',
+          'message',
+          'read',
+          'createdAt',
+        ])
+        && request.resource.data.id == notificationId
+        && request.resource.data.read == false
+        && request.resource.data.role in ['admin', 'user']
+        && (
+          (
+            request.resource.data.role == 'admin'
+            && request.resource.data.userId == 'admin'
+            && request.resource.data.type == 'order_created'
+          )
+          || (
+            isAdmin()
+            && request.resource.data.role == 'user'
+          )
+        );
+
+      allow read: if isAdmin()
+        || (
+          request.auth != null
+          && resource.data.role == 'user'
+          && resource.data.userId == request.auth.uid
+        );
+
+      allow update: if (
+          isAdmin()
+          || (
+            request.auth != null
+            && resource.data.role == 'user'
+            && resource.data.userId == request.auth.uid
+          )
+        )
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        && request.resource.data.read == true;
+
+      allow delete: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MenuItem, Order, Review } from '../types';
+import { MenuItem, Notification, Order, Review } from '../types';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { auth, ADMIN_EMAIL, db, storage } from '../firebase';
 import { collection, getCountFromServer, onSnapshot, query, Timestamp, where } from 'firebase/firestore';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { playNewOrderChime } from '../utils/adminChime';
 import {
@@ -17,7 +17,7 @@ import {
 } from '../utils/orders';
 import {
   TrendingUp, ShoppingCart, MessageSquare, Plus, Trash2,
-  Check, DollarSign, ShieldAlert, Loader2, LogIn, Users, Package,
+  Check, DollarSign, ShieldAlert, Loader2, LogIn, Users, Package, Bell,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -60,6 +60,29 @@ function mapFirestoreOrder(docId: string, data: Record<string, unknown>): Order 
     status: normalizeOrderStatus(data.status),
     createdAt,
     notes: data.notes ? String(data.notes) : undefined,
+  };
+}
+
+function mapFirestoreNotification(docId: string, data: Record<string, unknown>): Notification {
+  const createdAtRaw = data.createdAt;
+  let createdAt = new Date().toISOString();
+
+  if (createdAtRaw instanceof Timestamp) {
+    createdAt = createdAtRaw.toDate().toISOString();
+  } else if (typeof createdAtRaw === 'string') {
+    createdAt = createdAtRaw;
+  }
+
+  return {
+    id: docId,
+    userId: String(data.userId ?? ''),
+    role: data.role === 'user' ? 'user' : 'admin',
+    type: String(data.type ?? 'system'),
+    title: String(data.title ?? ''),
+    message: String(data.message ?? ''),
+    read: Boolean(data.read),
+    createdAt,
+    orderId: data.orderId ? String(data.orderId) : undefined,
   };
 }
 
@@ -192,6 +215,9 @@ export default function AdminPanel({
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [userStats, setUserStats] = useState<AnalyticsUserStats>({ totalUsers: 0, newUsersToday: 0 });
   const [userStatsLoading, setUserStatsLoading] = useState(false);
   const [userStatsError, setUserStatsError] = useState<string | null>(null);
@@ -267,6 +293,48 @@ export default function AdminPanel({
       unsubOrders();
       isFirstSnapshotRef.current = true;
     };
+  }, [isAdminAuthorized]);
+
+  useEffect(() => {
+    if (!isAdminAuthorized) {
+      setNotifications([]);
+      setNotificationsLoading(false);
+      setNotificationsError(null);
+      return;
+    }
+
+    setNotificationsLoading(true);
+    setNotificationsError(null);
+
+    const notificationsQuery = query(
+      collection(db, 'notifications'),
+      where('role', '==', 'admin')
+    );
+
+    const unsubscribe = onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        const nextNotifications = snapshot.docs
+          .map((notificationDoc) =>
+            mapFirestoreNotification(
+              notificationDoc.id,
+              notificationDoc.data() as Record<string, unknown>
+            )
+          )
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        setNotifications(nextNotifications);
+        setNotificationsLoading(false);
+        setNotificationsError(null);
+      },
+      (error) => {
+        console.error('Admin notifications listener failed:', error);
+        setNotificationsError('Notifications could not be loaded.');
+        setNotificationsLoading(false);
+      }
+    );
+
+    return unsubscribe;
   }, [isAdminAuthorized]);
 
   useEffect(() => {
@@ -426,6 +494,7 @@ export default function AdminPanel({
   const totalRevenue = analytics.totalRevenue;
   const totalOrdersCount = orders.length;
   const pendingOrders = orders.filter(o => ACTIVE_ORDER_STATUSES.includes(o.status));
+  const unreadAdminNotifications = notifications.filter((notification) => !notification.read);
   const visibleOrders = orderStatusFilter === 'all'
     ? orders
     : orders.filter((order) => order.status === orderStatusFilter);
@@ -473,6 +542,32 @@ export default function AdminPanel({
   const guardedDeleteOrder = (orderId: string) => {
     if (!isAdminAuthorized) return;
     onDeleteOrder(orderId);
+  };
+
+  const markAdminNotificationRead = async (notificationId: string) => {
+    if (!isAdminAuthorized) return;
+
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), { read: true });
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+      setNotificationsError('Could not update notification.');
+    }
+  };
+
+  const clearAdminNotifications = async () => {
+    if (!isAdminAuthorized || notifications.length === 0) return;
+
+    try {
+      await Promise.all(
+        notifications.map((notification) =>
+          deleteDoc(doc(db, 'notifications', notification.id))
+        )
+      );
+    } catch (error) {
+      console.error('Failed to clear notifications:', error);
+      setNotificationsError('Could not clear notifications.');
+    }
   };
 
   const paymentLabel = (method: Order['paymentMethod']) => {
@@ -648,6 +743,14 @@ export default function AdminPanel({
 
           {/* Quick Stats Summary badges */}
           <div className="flex flex-wrap items-center gap-2">
+            <div className="relative rounded-xl bg-stone-800 px-3 py-2.5 text-stone-300">
+              <Bell className="h-4 w-4" />
+              {unreadAdminNotifications.length > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full border border-stone-900 bg-red-600 px-1 text-[9px] font-bold text-white shadow-md">
+                  {unreadAdminNotifications.length}
+                </span>
+              )}
+            </div>
             <button
               onClick={() => setActiveTab('stats')}
               className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
@@ -730,6 +833,87 @@ export default function AdminPanel({
                       {label}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-stone-800 bg-stone-950/70 p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-400">
+                      <Bell className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <span className="block text-sm font-black text-white">Admin Notifications</span>
+                      <span className="text-xs text-stone-500">
+                        {unreadAdminNotifications.length} unread of {notifications.length}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={unreadAdminNotifications.length === 0}
+                      onClick={() => {
+                        void Promise.all(
+                          unreadAdminNotifications.map((notification) =>
+                            markAdminNotificationRead(notification.id)
+                          )
+                        );
+                      }}
+                      className="rounded-xl border border-stone-700 px-3 py-2 text-[10px] font-black uppercase text-stone-300 transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Mark read
+                    </button>
+                    <button
+                      type="button"
+                      disabled={notifications.length === 0}
+                      onClick={() => void clearAdminNotifications()}
+                      className="rounded-xl border border-red-500/20 px-3 py-2 text-[10px] font-black uppercase text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {notificationsLoading ? (
+                    <p className="rounded-2xl border border-stone-800 bg-stone-900 p-4 text-sm text-stone-400">
+                      Loading notifications...
+                    </p>
+                  ) : notificationsError ? (
+                    <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+                      {notificationsError}
+                    </p>
+                  ) : notifications.length > 0 ? (
+                    notifications.slice(0, 5).map((notification) => (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        onClick={() => void markAdminNotificationRead(notification.id)}
+                        className={`w-full rounded-2xl border p-3 text-left transition-colors ${
+                          notification.read
+                            ? 'border-stone-800 bg-stone-900/70 text-stone-400'
+                            : 'border-amber-500/20 bg-amber-500/10 text-stone-100'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-white">{notification.title}</p>
+                            <p className="mt-1 text-xs leading-5 text-stone-400">{notification.message}</p>
+                          </div>
+                          {!notification.read && (
+                            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-black uppercase text-white">
+                              New
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl border border-dashed border-stone-800 p-4 text-center text-sm text-stone-500">
+                      No admin notifications yet.
+                    </p>
+                  )}
                 </div>
               </div>
 

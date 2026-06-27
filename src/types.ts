@@ -77,6 +77,18 @@ export interface Review {
   approved: boolean;
 }
 
+export interface Notification {
+  id: string;
+  userId: string;
+  role: 'admin' | 'user';
+  type: string;
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  orderId?: string;
+}
+
 export interface AdminStats {
   totalRevenue: number;
   totalOrders: number;
