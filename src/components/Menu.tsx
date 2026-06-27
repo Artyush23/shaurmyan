@@ -1,15 +1,30 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MenuItem, CartItem } from '../types';
-import { Flame, Star, ShoppingCart, Plus, Check, X, ShieldAlert, Sparkles } from 'lucide-react';
+import { MenuItem, Review } from '../types';
+import { Flame, Star, ShoppingCart, Plus, Check, X, ShieldAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface MenuProps {
   menuItems: MenuItem[];
+  reviews: Review[];
+  currentUserId: string | null;
+  isAuthenticated: boolean;
+  onRequireAuth: () => void;
   onAddToCart: (item: MenuItem, selectedSize: string, selectedPrice: number, addedCustomizations: string[], quantity: number) => void;
+  onSaveReview: (productId: string, rating: number, comment: string) => Promise<void>;
+  onDeleteReview: (reviewId: string) => Promise<void>;
 }
 
-export default function Menu({ menuItems, onAddToCart }: MenuProps) {
+export default function Menu({
+  menuItems,
+  reviews,
+  currentUserId,
+  isAuthenticated,
+  onRequireAuth,
+  onAddToCart,
+  onSaveReview,
+  onDeleteReview,
+}: MenuProps) {
   const { t } = useTranslation();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
@@ -18,6 +33,10 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
   const [selectedSizeIdx, setSelectedSizeIdx] = useState<number>(0);
   const [selectedCustomizations, setSelectedCustomizations] = useState<string[]>([]);
   const [quantity, setQuantity] = useState<number>(1);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const predefinedCategories = [
     { id: 'all', icon: '✦', translationKey: 'menu.categories.all' },
@@ -41,6 +60,27 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
     ? menuItems
     : menuItems.filter(item => item.category === selectedCategory);
 
+  const approvedReviewsByProduct = useMemo(() => {
+    return reviews.reduce<Record<string, Review[]>>((acc, review) => {
+      if (!review.productId || review.approved === false) return acc;
+      acc[review.productId] = [...(acc[review.productId] ?? []), review];
+      return acc;
+    }, {});
+  }, [reviews]);
+
+  const getReviewSummary = (productId: string) => {
+    const productReviews = approvedReviewsByProduct[productId] ?? [];
+    const average = productReviews.length
+      ? productReviews.reduce((sum, review) => sum + review.rating, 0) / productReviews.length
+      : 0;
+
+    return {
+      average,
+      count: productReviews.length,
+      reviews: productReviews,
+    };
+  };
+
   const getDiscountedPrice = (item: MenuItem) => {
     if (!item.discountPercent || item.discountPercent <= 0) return item.price;
     return Number((item.price * (1 - Math.min(item.discountPercent, 100) / 100)).toFixed(2));
@@ -48,10 +88,16 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
 
   const handleOpenCustomize = (item: MenuItem) => {
     if (item.available === false) return;
+    const existingReview = reviews.find(
+      (review) => review.productId === item.id && review.userId === currentUserId
+    );
     setCustomizingItem(item);
     setSelectedSizeIdx(0);
     setSelectedCustomizations([]);
     setQuantity(1);
+    setReviewRating(existingReview?.rating ?? 5);
+    setReviewComment(existingReview?.comment ?? '');
+    setReviewError(null);
   };
 
   const toggleCustomization = (id: string) => {
@@ -95,6 +141,53 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
     setCustomizingItem(null);
   };
 
+  const handleSubmitReview = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!customizingItem) return;
+
+    if (!isAuthenticated) {
+      onRequireAuth();
+      return;
+    }
+
+    setReviewSubmitting(true);
+    setReviewError(null);
+
+    try {
+      await onSaveReview(customizingItem.id, reviewRating, reviewComment);
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : 'Could not save review.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const handleDeleteOwnReview = async () => {
+    if (!customizingItem) return;
+    const existingReview = reviews.find(
+      (review) => review.productId === customizingItem.id && review.userId === currentUserId
+    );
+    if (!existingReview) return;
+
+    setReviewSubmitting(true);
+    setReviewError(null);
+
+    try {
+      await onDeleteReview(existingReview.id);
+      setReviewRating(5);
+      setReviewComment('');
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : 'Could not delete review.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const selectedProductReviewSummary = customizingItem ? getReviewSummary(customizingItem.id) : null;
+  const existingUserReview = customizingItem
+    ? reviews.find((review) => review.productId === customizingItem.id && review.userId === currentUserId)
+    : undefined;
+
   return (
     <section id="menu" className="py-24 cream-grid-bg relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -135,16 +228,19 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
         {/* Menu Items Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           <AnimatePresence mode="popLayout">
-            {filteredItems.map(item => (
-              <motion.div
-                layout
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.4 }}
-                key={item.id}
-                className="bg-white border border-stone-100 rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 flex flex-col group justify-between"
-              >
+            {filteredItems.map(item => {
+              const reviewSummary = getReviewSummary(item.id);
+
+              return (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.4 }}
+                  key={item.id}
+                  className="bg-white border border-stone-100 rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 flex flex-col group justify-between"
+                >
                 {/* Image Section */}
                 <div className="relative h-48 overflow-hidden bg-stone-100">
                   <img
@@ -187,9 +283,18 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
                 {/* Info Section */}
                 <div className="p-5 flex-1 flex flex-col justify-between">
                   <div className="space-y-2 mb-4">
-                    <h3 className="font-extrabold text-stone-900 text-lg leading-snug">
-                      {item.name}
-                    </h3>
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-extrabold text-stone-900 text-lg leading-snug">
+                        {item.name}
+                      </h3>
+                      <div className="shrink-0 flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 px-2 py-1 text-[10px] font-black text-stone-800">
+                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                        <span>{reviewSummary.count ? reviewSummary.average.toFixed(1) : 'New'}</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-stone-400 font-semibold">
+                      {reviewSummary.count} {reviewSummary.count === 1 ? 'review' : 'reviews'}
+                    </span>
                     <p className="text-stone-500 text-xs font-light line-clamp-3 leading-relaxed">
                       {item.description}
                     </p>
@@ -218,8 +323,9 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
                     </button>
                   </div>
                 </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
         </div>
 
@@ -359,6 +465,119 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
                     </div>
                   </div>
                 )}
+
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <span className="block text-xs font-bold font-mono tracking-wider text-stone-400 uppercase">
+                        Product reviews
+                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-4 h-4 ${
+                                selectedProductReviewSummary && star <= Math.round(selectedProductReviewSummary.average)
+                                  ? 'text-amber-500 fill-amber-500'
+                                  : 'text-stone-300'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-xs font-black text-stone-800">
+                          {selectedProductReviewSummary?.count
+                            ? `${selectedProductReviewSummary.average.toFixed(1)} (${selectedProductReviewSummary.count})`
+                            : 'No reviews yet'}
+                        </span>
+                      </div>
+                    </div>
+                    {!isAuthenticated && (
+                      <button
+                        type="button"
+                        onClick={onRequireAuth}
+                        className="px-4 py-2 rounded-xl bg-stone-950 text-white text-xs font-black hover:bg-amber-500 hover:text-stone-950 transition-colors"
+                      >
+                        Sign in to review
+                      </button>
+                    )}
+                  </div>
+
+                  {isAuthenticated && (
+                    <form onSubmit={handleSubmitReview} className="space-y-3">
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setReviewRating(star)}
+                            className="p-1 rounded-lg hover:bg-amber-100 transition-colors"
+                            aria-label={`Rate ${star} star${star === 1 ? '' : 's'}`}
+                          >
+                            <Star
+                              className={`w-6 h-6 ${
+                                star <= reviewRating ? 'text-amber-500 fill-amber-500' : 'text-stone-300'
+                              }`}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={reviewComment}
+                        onChange={(event) => setReviewComment(event.target.value)}
+                        rows={3}
+                        maxLength={600}
+                        placeholder="Share what you liked about this product..."
+                        className="w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-none"
+                      />
+                      {reviewError && (
+                        <p className="text-xs font-semibold text-red-600">{reviewError}</p>
+                      )}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          type="submit"
+                          disabled={reviewSubmitting || !reviewComment.trim()}
+                          className="flex-1 py-2.5 rounded-xl bg-amber-500 text-stone-950 text-xs font-black hover:bg-amber-600 disabled:bg-stone-200 disabled:text-stone-500 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {reviewSubmitting ? 'Saving...' : existingUserReview ? 'Update review' : 'Save review'}
+                        </button>
+                        {existingUserReview && (
+                          <button
+                            type="button"
+                            disabled={reviewSubmitting}
+                            onClick={handleDeleteOwnReview}
+                            className="px-4 py-2.5 rounded-xl border border-red-200 text-red-600 text-xs font-black hover:bg-red-50 disabled:opacity-60 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  )}
+
+                  <div className="space-y-2">
+                    {(selectedProductReviewSummary?.reviews ?? []).slice(0, 3).map((review) => (
+                      <div key={review.id} className="rounded-xl bg-white border border-stone-100 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-black text-stone-900">
+                            {review.userName || review.author}
+                          </span>
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-3 h-3 ${
+                                  star <= review.rating ? 'text-amber-500 fill-amber-500' : 'text-stone-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="text-xs text-stone-500 leading-relaxed mt-1">{review.comment}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
               </div>
 

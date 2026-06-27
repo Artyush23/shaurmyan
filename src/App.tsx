@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   getDoc,
+  onSnapshot,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -87,7 +88,7 @@ function getSchemaJsonLd() {
 }
 
 export default function App() {
-  const { user, loading: authLoading, isAdmin: isAdminUser } = useAuth();
+  const { user, profile, loading: authLoading, isAdmin: isAdminUser } = useAuth();
   const [activeView, setActiveView] = useState<'client' | 'admin' | 'banking' | 'profile'>('client');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -100,6 +101,8 @@ export default function App() {
     const saved = localStorage.getItem('shaurmyan_reviews');
     return saved ? JSON.parse(saved) : INITIAL_REVIEWS;
   });
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
 
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     const saved = localStorage.getItem('shaurmyan_cart');
@@ -120,6 +123,57 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('shaurmyan_reviews', JSON.stringify(reviews));
   }, [reviews]);
+
+  useEffect(() => {
+    setReviewsLoading(true);
+    setReviewsError(null);
+
+    const unsubscribe = onSnapshot(
+      collection(db, 'reviews'),
+      (snapshot) => {
+        const nextReviews = snapshot.docs
+          .map((reviewDoc) => {
+            const data = reviewDoc.data() as Record<string, unknown>;
+            const createdAtRaw = data.createdAt;
+            const updatedAtRaw = data.updatedAt;
+            const createdAt = createdAtRaw && typeof (createdAtRaw as { toDate?: unknown }).toDate === 'function'
+              ? (createdAtRaw as { toDate: () => Date }).toDate().toISOString()
+              : typeof createdAtRaw === 'string'
+                ? createdAtRaw
+                : new Date().toISOString();
+            const updatedAt = updatedAtRaw && typeof (updatedAtRaw as { toDate?: unknown }).toDate === 'function'
+              ? (updatedAtRaw as { toDate: () => Date }).toDate().toISOString()
+              : typeof updatedAtRaw === 'string'
+                ? updatedAtRaw
+                : undefined;
+
+            return {
+              id: reviewDoc.id,
+              productId: data.productId ? String(data.productId) : undefined,
+              userId: data.userId ? String(data.userId) : undefined,
+              userName: data.userName ? String(data.userName) : undefined,
+              author: String(data.userName ?? data.author ?? 'Guest'),
+              rating: Number(data.rating ?? 5),
+              comment: String(data.comment ?? ''),
+              createdAt,
+              updatedAt,
+              approved: data.approved === false ? false : true,
+            } satisfies Review;
+          })
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        setReviews(nextReviews);
+        setReviewsLoading(false);
+      },
+      (error) => {
+        console.error('Failed to load reviews:', error);
+        setReviewsError('Could not load reviews right now.');
+        setReviewsLoading(false);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('shaurmyan_cart', JSON.stringify(cartItems));
@@ -185,16 +239,47 @@ export default function App() {
     setCartItems([]);
   };
 
-  const handleAddReview = (author: string, rating: number, comment: string) => {
-    const newRev: Review = {
-      id: `rev-${Date.now()}`,
-      author,
-      rating,
-      comment,
-      createdAt: new Date().toISOString(),
-      approved: false,
+  const handleSaveProductReview = async (productId: string, rating: number, comment: string) => {
+    if (!user) {
+      throw new Error('Please sign in to review this product.');
+    }
+
+    const trimmedComment = comment.trim();
+    if (!trimmedComment) {
+      throw new Error('Please write a review before submitting.');
+    }
+
+    const safeRating = Math.min(5, Math.max(1, Math.round(rating)));
+    const reviewId = `${productId}_${user.uid}`;
+    const reviewRef = doc(db, 'reviews', reviewId);
+    const reviewSnapshot = await getDoc(reviewRef);
+    const displayName = profile?.displayName || user.displayName || user.email || 'Customer';
+    const baseReview = {
+      id: reviewId,
+      productId,
+      userId: user.uid,
+      userName: displayName,
+      author: displayName,
+      rating: safeRating,
+      comment: trimmedComment,
+      approved: true,
     };
-    setReviews((prev) => [newRev, ...prev]);
+
+    await setDoc(
+      reviewRef,
+      reviewSnapshot.exists()
+        ? {
+            ...baseReview,
+            createdAt: reviewSnapshot.data().createdAt ?? serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }
+        : {
+            ...baseReview,
+            createdAt: serverTimestamp(),
+            updatedAt: null,
+          },
+      { merge: true }
+    );
   };
 
   const createNotification = async (input: {
@@ -503,12 +588,32 @@ export default function App() {
     setMenuItems((prev) => prev.filter((item) => item.id !== itemId));
   };
 
-  const handleApproveReview = (reviewId: string) => {
-    setReviews((prev) => prev.map((r) => (r.id === reviewId ? { ...r, approved: true } : r)));
+  const handleApproveReview = async (reviewId: string) => {
+    if (!isAdminUser) return;
+
+    try {
+      await updateDoc(doc(db, 'reviews', reviewId), {
+        approved: true,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Failed to approve review:', error);
+    }
   };
 
-  const handleDeleteReview = (reviewId: string) => {
-    setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+  const handleDeleteReview = async (reviewId: string) => {
+    const existingReview = reviews.find((review) => review.id === reviewId);
+    const canDelete = isAdminUser || (Boolean(user) && existingReview?.userId === user?.uid);
+    if (!canDelete) {
+      throw new Error('You can only delete your own reviews.');
+    }
+
+    try {
+      await deleteDoc(doc(db, 'reviews', reviewId));
+    } catch (error) {
+      console.error('Failed to delete review:', error);
+      throw error;
+    }
   };
 
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -585,14 +690,25 @@ export default function App() {
           <>
             <Hero onScrollToMenu={() => handleScrollTo('menu')} />
             <ScrollShowcase />
-            <Menu menuItems={menuItems} onAddToCart={handleAddToCart} />
-            <Reviews reviews={reviews} onAddReview={handleAddReview} />
+            <Menu
+              menuItems={menuItems}
+              reviews={reviews}
+              currentUserId={user?.uid ?? null}
+              isAuthenticated={Boolean(user)}
+              onRequireAuth={() => setAuthModalOpen(true)}
+              onAddToCart={handleAddToCart}
+              onSaveReview={handleSaveProductReview}
+              onDeleteReview={handleDeleteReview}
+            />
+            <Reviews reviews={reviews} reviewsLoading={reviewsLoading} reviewsError={reviewsError} />
           </>
         ) : activeView === 'admin' ? (
           <RequireAdmin>
             <AdminPanel
               menuItems={menuItems}
               reviews={reviews}
+              reviewsLoading={reviewsLoading}
+              reviewsError={reviewsError}
               isAdminAuthorized={isAdminUser}
               onUpdateOrderStatus={handleUpdateOrderStatus}
               onDeleteOrder={handleDeleteOrder}

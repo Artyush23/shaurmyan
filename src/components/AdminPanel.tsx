@@ -23,6 +23,8 @@ import {
 interface AdminPanelProps {
   menuItems: MenuItem[];
   reviews: Review[];
+  reviewsLoading?: boolean;
+  reviewsError?: string | null;
   isAdminAuthorized: boolean;
   onUpdateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
   onDeleteOrder: (orderId: string) => void;
@@ -197,6 +199,8 @@ function StatCard({
 export default function AdminPanel({
   menuItems,
   reviews,
+  reviewsLoading = false,
+  reviewsError = null,
   isAdminAuthorized,
   onUpdateOrderStatus,
   onDeleteOrder,
@@ -224,6 +228,8 @@ export default function AdminPanel({
   const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | Order['status']>('all');
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRange>('7d');
+  const [reviewRatingFilter, setReviewRatingFilter] = useState<'all' | string>('all');
+  const [reviewProductFilter, setReviewProductFilter] = useState('all');
   const isFirstSnapshotRef = useRef(true);
   
   // States for adding a new item
@@ -498,6 +504,13 @@ export default function AdminPanel({
   const visibleOrders = orderStatusFilter === 'all'
     ? orders
     : orders.filter((order) => order.status === orderStatusFilter);
+  const getMenuItemName = (productId?: string) =>
+    menuItems.find((item) => item.id === productId)?.name || productId || 'General review';
+  const filteredReviews = reviews.filter((review) => {
+    const matchesRating = reviewRatingFilter === 'all' || review.rating === Number(reviewRatingFilter);
+    const matchesProduct = reviewProductFilter === 'all' || review.productId === reviewProductFilter;
+    return matchesRating && matchesProduct;
+  });
   const popularSorted = analytics.bestSellingProducts.map((product) => ({
     name: product.name,
     count: product.count,
@@ -1783,15 +1796,60 @@ export default function AdminPanel({
                 <span className="text-xs text-stone-400 font-medium">სულ {reviews.length} შეფასება ბაზაში</span>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-3xl border border-stone-800 bg-stone-950/70 p-4">
+                <label className="space-y-1">
+                  <span className="block text-[10px] font-black uppercase tracking-wide text-stone-500">Product</span>
+                  <select
+                    value={reviewProductFilter}
+                    onChange={(event) => setReviewProductFilter(event.target.value)}
+                    className="w-full rounded-xl border border-stone-800 bg-stone-900 px-3 py-2 text-xs font-bold text-stone-200 focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value="all">All products</option>
+                    {menuItems.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="block text-[10px] font-black uppercase tracking-wide text-stone-500">Rating</span>
+                  <select
+                    value={reviewRatingFilter}
+                    onChange={(event) => setReviewRatingFilter(event.target.value)}
+                    className="w-full rounded-xl border border-stone-800 bg-stone-900 px-3 py-2 text-xs font-bold text-stone-200 focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value="all">All ratings</option>
+                    {[5, 4, 3, 2, 1].map((rating) => (
+                      <option key={rating} value={rating}>{rating} stars</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
               <div className="space-y-3">
-                {reviews.map(rev => (
+                {reviewsLoading && (
+                  <div className="text-center py-16 bg-stone-950 rounded-3xl border border-stone-800">
+                    <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-amber-500 motion-reduce:animate-none" />
+                    <p className="text-stone-400 text-sm">Loading reviews...</p>
+                  </div>
+                )}
+
+                {!reviewsLoading && reviewsError && (
+                  <div className="text-center py-16 bg-red-950/30 rounded-3xl border border-red-900/60">
+                    <p className="text-red-200 text-sm">{reviewsError}</p>
+                  </div>
+                )}
+
+                {!reviewsLoading && !reviewsError && filteredReviews.map(rev => (
                   <div
                     key={rev.id}
                     className="bg-stone-950/80 border border-stone-800 p-5 rounded-3xl text-left flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4"
                   >
                     <div className="space-y-1.5 flex-1">
                       <div className="flex items-center space-x-2">
-                        <span className="font-bold text-white text-xs sm:text-sm">{rev.author}</span>
+                        <span className="font-bold text-white text-xs sm:text-sm">{rev.userName || rev.author}</span>
+                        <span className="rounded-full bg-stone-900 px-2 py-0.5 text-[10px] font-bold text-stone-400">
+                          {getMenuItemName(rev.productId)}
+                        </span>
                         <div className="flex items-center">
                           {[1, 2, 3, 4, 5].map((s) => (
                             <span
@@ -1844,7 +1902,7 @@ export default function AdminPanel({
                   </div>
                 ))}
 
-                {reviews.length === 0 && (
+                {!reviewsLoading && !reviewsError && filteredReviews.length === 0 && (
                   <div className="text-center py-20 bg-stone-950 rounded-3xl border border-dashed border-stone-800">
                     <p className="text-stone-400 text-sm">შეფასებები მოდერაციისთვის ჯერ არ შემოსულა.</p>
                   </div>

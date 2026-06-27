@@ -20,6 +20,43 @@ service cloud.firestore {
       ];
     }
 
+    function isValidReviewData(data) {
+      return data.keys().hasAll([
+          'id',
+          'productId',
+          'userId',
+          'userName',
+          'author',
+          'rating',
+          'comment',
+          'createdAt',
+          'approved',
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'productId',
+          'userId',
+          'userName',
+          'author',
+          'rating',
+          'comment',
+          'createdAt',
+          'updatedAt',
+          'approved',
+        ])
+        && data.productId is string
+        && data.userId is string
+        && data.userName is string
+        && data.author is string
+        && data.comment is string
+        && data.comment.size() > 0
+        && data.comment.size() <= 600
+        && data.rating is int
+        && data.rating >= 1
+        && data.rating <= 5
+        && data.approved is bool;
+    }
+
     match /orders/{orderId} {
       allow create: if request.auth != null
         && request.resource.data.keys().hasAll([
@@ -61,6 +98,31 @@ service cloud.firestore {
     match /products/{productId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+        && isValidReviewData(request.resource.data)
+        && request.resource.data.id == reviewId
+        && request.resource.data.userId == request.auth.uid
+        && reviewId == request.resource.data.productId + '_' + request.auth.uid;
+
+      allow update: if (
+          isAdmin()
+          || (
+            request.auth != null
+            && resource.data.userId == request.auth.uid
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.productId == resource.data.productId
+          )
+        )
+        && isValidReviewData(request.resource.data)
+        && request.resource.data.id == reviewId;
+
+      allow delete: if isAdmin()
+        || (request.auth != null && resource.data.userId == request.auth.uid);
     }
 
     match /notifications/{notificationId} {
