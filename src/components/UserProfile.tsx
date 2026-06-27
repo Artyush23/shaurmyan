@@ -22,6 +22,7 @@ import { db, getAuthErrorMessage, updateUserProfile } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { clearSavedCard, getSavedCard, type SavedCard } from '../utils/cardPayment';
 import type { Order } from '../types';
+import { getOrderStatusClass, getOrderStatusLabel, normalizeOrderStatus } from '../utils/orders';
 
 function mapProfileOrder(docId: string, data: Record<string, unknown>): Order {
   const createdAtRaw = data.createdAt;
@@ -35,13 +36,16 @@ function mapProfileOrder(docId: string, data: Record<string, unknown>): Order {
 
   return {
     id: docId,
+    userId: String(data.userId ?? ''),
     customerName: String(data.customerName ?? ''),
-    customerPhone: String(data.customerPhone ?? ''),
-    customerAddress: String(data.customerAddress ?? ''),
+    phone: String(data.phone ?? data.customerPhone ?? ''),
+    address: String(data.address ?? data.customerAddress ?? ''),
+    customerPhone: String(data.customerPhone ?? data.phone ?? ''),
+    customerAddress: String(data.customerAddress ?? data.address ?? ''),
     paymentMethod: (data.paymentMethod as Order['paymentMethod']) ?? 'card_online',
     items: (data.items as Order['items']) ?? [],
     totalPrice: Number(data.totalPrice ?? 0),
-    status: (data.status as Order['status']) ?? 'new',
+    status: normalizeOrderStatus(data.status),
     createdAt,
     notes: data.notes ? String(data.notes) : undefined,
   };
@@ -136,8 +140,7 @@ export default function UserProfile({
       (snapshot) => {
         const nextOrders = snapshot.docs
           .map((orderDoc) => mapProfileOrder(orderDoc.id, orderDoc.data()))
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5);
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
         setOrders(nextOrders);
         setOrdersLoading(false);
@@ -460,8 +463,8 @@ export default function UserProfile({
                           {formatDate(order.createdAt)}
                         </p>
                       </div>
-                      <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-amber-400">
-                        {order.status}
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${getOrderStatusClass(order.status)}`}>
+                        {getOrderStatusLabel(order.status)}
                       </span>
                     </div>
                     <p className="mt-3 text-sm font-black text-amber-500">
