@@ -9,23 +9,42 @@ service cloud.firestore {
         ];
     }
 
+    function isAllowedOrderStatus(status) {
+      return status in [
+        'pending',
+        'accepted',
+        'preparing',
+        'ready',
+        'delivered',
+        'cancelled'
+      ];
+    }
+
     match /orders/{orderId} {
-      allow create: if request.resource.data.keys().hasAll([
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll([
+          'id',
+          'userId',
           'customerName',
-          'customerPhone',
-          'customerAddress',
-          'paymentMethod',
+          'phone',
+          'address',
           'items',
           'totalPrice',
           'status',
           'createdAt',
         ])
-        && request.resource.data.status == 'new'
+        && request.resource.data.id == orderId
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending'
         && request.resource.data.totalPrice is number
         && request.resource.data.items is list
-        && request.resource.data.paymentMethod in ['cash', 'card_courier', 'card_online'];
+        && (!('paymentMethod' in request.resource.data)
+          || request.resource.data.paymentMethod in ['cash_on_delivery', 'card_online']);
 
-      allow read, update, delete: if isAdmin();
+      allow read: if isAdmin()
+        || (request.auth != null && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin()
+        && (!('status' in request.resource.data) || isAllowedOrderStatus(request.resource.data.status));
     }
 
     match /adminPanel/{docId} {

@@ -8,6 +8,14 @@ import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { playNewOrderChime } from '../utils/adminChime';
 import {
+  ACTIVE_ORDER_STATUSES,
+  ORDER_STATUSES,
+  getNextOrderStatus,
+  getOrderStatusClass,
+  getOrderStatusLabel,
+  normalizeOrderStatus,
+} from '../utils/orders';
+import {
   TrendingUp, ShoppingCart, MessageSquare, Plus, Trash2,
   Check, DollarSign, ShieldAlert, Loader2, LogIn,
 } from 'lucide-react';
@@ -16,7 +24,7 @@ interface AdminPanelProps {
   menuItems: MenuItem[];
   reviews: Review[];
   isAdminAuthorized: boolean;
-  onUpdateOrderStatus: (orderId: string, status: Order['status']) => void;
+  onUpdateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
   onDeleteOrder: (orderId: string) => void;
   onUpdateMenuPrice: (itemId: string, newPrice: number) => void;
   onUpdateMenuAvailability: (itemId: string, available: boolean) => void;
@@ -40,13 +48,16 @@ function mapFirestoreOrder(docId: string, data: Record<string, unknown>): Order 
 
   return {
     id: docId,
+    userId: String(data.userId ?? ''),
     customerName: String(data.customerName ?? ''),
-    customerPhone: String(data.customerPhone ?? ''),
-    customerAddress: String(data.customerAddress ?? ''),
+    phone: String(data.phone ?? data.customerPhone ?? ''),
+    address: String(data.address ?? data.customerAddress ?? ''),
+    customerPhone: String(data.customerPhone ?? data.phone ?? ''),
+    customerAddress: String(data.customerAddress ?? data.address ?? ''),
     paymentMethod: data.paymentMethod as Order['paymentMethod'],
     items: (data.items as Order['items']) ?? [],
     totalPrice: Number(data.totalPrice ?? 0),
-    status: data.status as Order['status'],
+    status: normalizeOrderStatus(data.status),
     createdAt,
     notes: data.notes ? String(data.notes) : undefined,
   };
@@ -93,6 +104,8 @@ export default function AdminPanel({
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | Order['status']>('all');
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const isFirstSnapshotRef = useRef(true);
   
   // States for adding a new item
@@ -130,7 +143,7 @@ export default function AdminPanel({
                 change.doc.id,
                 change.doc.data() as Record<string, unknown>
               );
-              if (order.status === 'new') {
+              if (order.status === 'pending') {
                 playNewOrderChime();
               }
             }
@@ -171,7 +184,10 @@ export default function AdminPanel({
 
   const totalOrdersCount = orders.length;
   
-  const pendingOrders = orders.filter(o => ['new', 'preparing', 'delivering'].includes(o.status));
+  const pendingOrders = orders.filter(o => ACTIVE_ORDER_STATUSES.includes(o.status));
+  const visibleOrders = orderStatusFilter === 'all'
+    ? orders
+    : orders.filter((order) => order.status === orderStatusFilter);
 
   // Count item frequency for analytics
   const popularStats: { [name: string]: number } = {};
@@ -206,9 +222,19 @@ export default function AdminPanel({
     }
   };
 
-  const guardedUpdateOrderStatus = (orderId: string, status: Order['status']) => {
+  const guardedUpdateOrderStatus = async (orderId: string, status: Order['status']) => {
     if (!isAdminAuthorized) return;
-    onUpdateOrderStatus(orderId, status);
+
+    setUpdatingOrderId(orderId);
+    setOrdersError(null);
+
+    try {
+      await onUpdateOrderStatus(orderId, status);
+    } catch {
+      setOrdersError('Could not update order status. Please try again.');
+    } finally {
+      setUpdatingOrderId(null);
+    }
   };
 
   const guardedDeleteOrder = (orderId: string) => {
@@ -553,7 +579,7 @@ export default function AdminPanel({
               className="space-y-4"
             >
               <div className="flex items-center justify-between">
-                <span className="text-white font-extrabold text-lg">შეკვეთების ჟურნალი ({orders.length})</span>
+                <span className="text-white font-extrabold text-lg">შეკვეთების ჟურნალი ({visibleOrders.length})</span>
                 <span className="text-xs text-amber-500 font-mono flex items-center gap-1.5">
                   {ordersLoading ? (
                     <>
@@ -564,6 +590,34 @@ export default function AdminPanel({
                     <>● LIVE FIRESTORE</>
                   )}
                 </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOrderStatusFilter('all')}
+                  className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                    orderStatusFilter === 'all'
+                      ? 'bg-amber-500 text-stone-950'
+                      : 'bg-stone-800 text-stone-300 hover:bg-stone-700'
+                  }`}
+                >
+                  All
+                </button>
+                {ORDER_STATUSES.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setOrderStatusFilter(status)}
+                    className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                      orderStatusFilter === status
+                        ? 'bg-amber-500 text-stone-950'
+                        : 'bg-stone-800 text-stone-300 hover:bg-stone-700'
+                    }`}
+                  >
+                    {getOrderStatusLabel(status)}
+                  </button>
+                ))}
               </div>
 
               {ordersError && (
@@ -578,7 +632,7 @@ export default function AdminPanel({
                   <p className="text-stone-400 text-sm">Firestore-იდან შეკვეთების ჩატვირთვა...</p>
                 </div>
               ) : (
-              orders.map(ord => {
+              visibleOrders.map(ord => {
                 // Color mapping helper
                 const statusLabels: { [key: string]: { label: string; class: string } } = {
                   new: { label: 'ახალი 🚀', class: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
@@ -588,7 +642,11 @@ export default function AdminPanel({
                   cancelled: { label: 'გაუქმდა ❌', class: 'bg-red-500/10 text-red-400 border-red-500/20' },
                 };
 
-                const stat = statusLabels[ord.status] || { label: ord.status, class: 'bg-stone-800' };
+                const stat = {
+                  label: getOrderStatusLabel(ord.status),
+                  class: getOrderStatusClass(ord.status),
+                };
+                const nextStatus = getNextOrderStatus(ord.status);
 
                 return (
                   <div
@@ -652,23 +710,31 @@ export default function AdminPanel({
                       <div className="flex items-center space-x-1.5">
                         {ord.status !== 'delivered' && ord.status !== 'cancelled' ? (
                           <>
-                            {ord.status === 'new' && (
+                            {ord.status === 'pending' && (
                               <button
-                                onClick={() => guardedUpdateOrderStatus(ord.id, 'preparing')}
+                                onClick={() => guardedUpdateOrderStatus(ord.id, 'accepted')}
                                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
                               >
                                 დამუშავება ▶
                               </button>
                             )}
+                            {ord.status === 'accepted' && (
+                              <button
+                                onClick={() => guardedUpdateOrderStatus(ord.id, 'preparing')}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
+                              >
+                                Mark Preparing
+                              </button>
+                            )}
                             {ord.status === 'preparing' && (
                               <button
-                                onClick={() => guardedUpdateOrderStatus(ord.id, 'delivering')}
+                                onClick={() => guardedUpdateOrderStatus(ord.id, 'ready')}
                                 className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
                               >
                                 გაგზავნა ▶
                               </button>
                             )}
-                            {ord.status === 'delivering' && (
+                            {ord.status === 'ready' && (
                               <button
                                 onClick={() => guardedUpdateOrderStatus(ord.id, 'delivered')}
                                 className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
@@ -701,7 +767,7 @@ export default function AdminPanel({
               })
               )}
 
-              {!ordersLoading && orders.length === 0 && (
+              {!ordersLoading && visibleOrders.length === 0 && (
                 <div className="text-center py-20 bg-stone-950 rounded-3xl border border-dashed border-stone-800">
                   <p className="text-stone-400 text-sm">შეკვეთების ჟურნალი ჯერ ცარიელია.</p>
                 </div>

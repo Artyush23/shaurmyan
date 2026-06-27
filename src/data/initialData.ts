@@ -231,7 +231,7 @@ export const INITIAL_ORDERS: Order[] = [
       { name: 'იან - მეგა კომბო მენიუ 🍟🥤', size: 'დიდი კომბო (საშუალო შაურმა)', extras: ['ორმაგი ყველი შაურმაში 🧀'], price: 28.00, quantity: 1 }
     ],
     totalPrice: 28.00,
-    status: 'new',
+    status: 'pending',
     createdAt: '2026-06-14T14:46:00+04:00'
   }
 ];

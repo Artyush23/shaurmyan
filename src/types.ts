@@ -37,13 +37,25 @@ export interface CartItem {
   quantity: number;
 }
 
+export type OrderStatus =
+  | 'pending'
+  | 'accepted'
+  | 'preparing'
+  | 'ready'
+  | 'delivered'
+  | 'cancelled';
+
 export interface Order {
   id: string;
+  userId?: string;
   customerName: string;
-  customerPhone: string;
-  customerAddress: string;
+  phone?: string;
+  address?: string;
+  customerPhone?: string;
+  customerAddress?: string;
   paymentMethod: 'card_online' | 'cash_on_delivery';
   items: {
+    productId?: string;
     name: string;
     size: string;
     extras: string[];
@@ -51,7 +63,7 @@ export interface Order {
     quantity: number;
   }[];
   totalPrice: number;
-  status: 'new' | 'preparing' | 'delivering' | 'delivered' | 'cancelled';
+  status: OrderStatus;
   createdAt: string;
   notes?: string;
 }

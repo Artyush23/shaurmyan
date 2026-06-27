@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import {
+  collection,
   doc,
+  getDoc,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -206,17 +208,29 @@ export default function App() {
       0
     );
     const deliveryFee = itemsTotal > 30 ? 0 : 3.0;
-    const orderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+    if (!user) {
+      throw new Error('Authentication is required to complete checkout.');
+    }
+
+    const orderRef = doc(collection(db, 'orders'));
+    const orderId = orderRef.id;
+    const trimmedName = customerName.trim();
+    const trimmedPhone = customerPhone.trim();
+    const trimmedAddress = customerAddress.trim();
 
     try {
-      await setDoc(doc(db, 'orders', orderId), {
-        customerName,
-        customerPhone,
-        customerAddress,
+      await setDoc(orderRef, {
+        id: orderId,
+        customerName: trimmedName,
+        phone: trimmedPhone,
+        address: trimmedAddress,
+        customerPhone: trimmedPhone,
+        customerAddress: trimmedAddress,
         paymentMethod,
-        userId: user?.uid ?? null,
-        userEmail: user?.email ?? null,
+        userId: user.uid,
+        userEmail: user.email ?? null,
         items: cartItems.map((item) => ({
+          productId: item.menuItem.id,
           name: item.menuItem.name,
           size: item.selectedSize,
           extras: item.addedCustomizations.map((cId) => {
@@ -227,7 +241,7 @@ export default function App() {
           quantity: item.quantity,
         })),
         totalPrice: itemsTotal + deliveryFee,
-        status: 'new',
+        status: 'pending',
         createdAt: serverTimestamp(),
         notes: notes ?? null,
       });
@@ -368,9 +382,17 @@ export default function App() {
     if (!isAdminUser) return;
 
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status });
+      const orderRef = doc(db, 'orders', orderId);
+      const snapshot = await getDoc(orderRef);
+
+      if (!snapshot.exists()) {
+        throw new Error('Order not found.');
+      }
+
+      await updateDoc(orderRef, { status });
     } catch (error) {
       console.error('Failed to update order status:', error);
+      throw error;
     }
   };
 
