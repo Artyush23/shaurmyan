@@ -163,4 +163,4 @@ Planned work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md). Current prioritie
 
 ## License
 
-No license file is currently included. Unless a license is added, the source code remains under the copyright holder's default rights and may not be redistributed or reused without permission.
+This project is licensed under the ISC License. See [LICENSE](LICENSE) for details.
