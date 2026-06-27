@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MenuItem, Order, Review } from '../types';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { auth, ADMIN_EMAIL, db, storage } from '../firebase';
-import { collection, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, getCountFromServer, onSnapshot, query, Timestamp, where } from 'firebase/firestore';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { playNewOrderChime } from '../utils/adminChime';
@@ -17,7 +17,7 @@ import {
 } from '../utils/orders';
 import {
   TrendingUp, ShoppingCart, MessageSquare, Plus, Trash2,
-  Check, DollarSign, ShieldAlert, Loader2, LogIn,
+  Check, DollarSign, ShieldAlert, Loader2, LogIn, Users, Package,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -83,6 +83,94 @@ function getProductImagePath(productId: string, file: File): string {
   return `products/${productId}/${Date.now()}.${extension}`;
 }
 
+type AnalyticsRange = 'today' | '7d' | '30d' | 'all';
+
+interface AnalyticsUserStats {
+  totalUsers: number;
+  newUsersToday: number;
+}
+
+function startOfToday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function startOfDaysAgo(days: number) {
+  const date = startOfToday();
+  date.setDate(date.getDate() - (days - 1));
+  return date;
+}
+
+function getRangeStart(range: AnalyticsRange) {
+  if (range === 'today') return startOfToday();
+  if (range === '7d') return startOfDaysAgo(7);
+  if (range === '30d') return startOfDaysAgo(30);
+  return null;
+}
+
+function isInRange(dateValue: string, range: AnalyticsRange) {
+  const start = getRangeStart(range);
+  if (!start) return true;
+  return new Date(dateValue).getTime() >= start.getTime();
+}
+
+function formatMoney(value: number) {
+  return `₾${value.toFixed(2)}`;
+}
+
+function formatDayKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getLastDays(days: number) {
+  return Array.from({ length: days }, (_, index) => {
+    const date = startOfDaysAgo(days);
+    date.setDate(date.getDate() + index);
+    return {
+      key: formatDayKey(date),
+      label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    };
+  });
+}
+
+function StatCard({
+  label,
+  value,
+  detail,
+  icon,
+  tone = 'amber',
+}: {
+  label: string;
+  value: string | number;
+  detail?: string;
+  icon: React.ReactNode;
+  tone?: 'amber' | 'blue' | 'green' | 'red' | 'purple';
+}) {
+  const toneClass = {
+    amber: 'bg-amber-500/10 text-amber-500',
+    blue: 'bg-blue-500/10 text-blue-400',
+    green: 'bg-green-500/10 text-green-400',
+    red: 'bg-red-500/10 text-red-400',
+    purple: 'bg-purple-500/10 text-purple-400',
+  }[tone];
+
+  return (
+    <div className="bg-stone-950/80 border border-stone-800 p-5 rounded-3xl flex items-center justify-between shadow-xl min-h-32">
+      <div className="min-w-0">
+        <span className="text-stone-400 text-xs block font-mono uppercase tracking-wide">{label}</span>
+        <span className="text-2xl sm:text-3xl font-mono font-black text-white mt-2 block truncate">
+          {value}
+        </span>
+        {detail && <span className="text-[10px] text-stone-500 block mt-1 font-medium">{detail}</span>}
+      </div>
+      <div className={`p-3 rounded-2xl ${toneClass}`}>
+        {icon}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPanel({
   menuItems,
   reviews,
@@ -104,8 +192,12 @@ export default function AdminPanel({
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [userStats, setUserStats] = useState<AnalyticsUserStats>({ totalUsers: 0, newUsersToday: 0 });
+  const [userStatsLoading, setUserStatsLoading] = useState(false);
+  const [userStatsError, setUserStatsError] = useState<string | null>(null);
   const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | Order['status']>('all');
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRange>('7d');
   const isFirstSnapshotRef = useRef(true);
   
   // States for adding a new item
@@ -177,29 +269,170 @@ export default function AdminPanel({
     };
   }, [isAdminAuthorized]);
 
-  // Math stats helpers
-  const totalRevenue = orders
-    .filter(o => o.status === 'delivered')
-    .reduce((sum, o) => sum + o.totalPrice, 0);
+  useEffect(() => {
+    if (!isAdminAuthorized) {
+      setUserStats({ totalUsers: 0, newUsersToday: 0 });
+      setUserStatsLoading(false);
+      setUserStatsError(null);
+      return;
+    }
 
+    let cancelled = false;
+
+    async function loadUserStats() {
+      setUserStatsLoading(true);
+      setUserStatsError(null);
+
+      try {
+        const usersCollection = collection(db, 'users');
+        const [totalSnapshot, todaySnapshot] = await Promise.all([
+          getCountFromServer(usersCollection),
+          getCountFromServer(
+            query(usersCollection, where('createdAt', '>=', Timestamp.fromDate(startOfToday())))
+          ),
+        ]);
+
+        if (!cancelled) {
+          setUserStats({
+            totalUsers: totalSnapshot.data().count,
+            newUsersToday: todaySnapshot.data().count,
+          });
+          setUserStatsLoading(false);
+        }
+      } catch (error) {
+        console.error('Failed to load user analytics:', error);
+        if (!cancelled) {
+          setUserStatsError('User analytics are unavailable right now.');
+          setUserStatsLoading(false);
+        }
+      }
+    }
+
+    void loadUserStats();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminAuthorized]);
+
+  const analytics = useMemo(() => {
+    const todayStart = startOfToday().getTime();
+    const filteredOrders = orders.filter((order) => isInRange(order.createdAt, analyticsRange));
+    const completedOrders = orders.filter((order) => order.status === 'delivered');
+    const filteredCompletedOrders = filteredOrders.filter((order) => order.status === 'delivered');
+    const todayOrders = orders.filter((order) => new Date(order.createdAt).getTime() >= todayStart);
+    const todayRevenue = todayOrders
+      .filter((order) => order.status === 'delivered')
+      .reduce((sum, order) => sum + order.totalPrice, 0);
+    const totalRevenue = completedOrders.reduce((sum, order) => sum + order.totalPrice, 0);
+    const filteredRevenue = filteredCompletedOrders.reduce((sum, order) => sum + order.totalPrice, 0);
+
+    const statusCounts = ORDER_STATUSES.reduce<Record<Order['status'], number>>((acc, status) => {
+      acc[status] = filteredOrders.filter((order) => order.status === status).length;
+      return acc;
+    }, {
+      pending: 0,
+      accepted: 0,
+      preparing: 0,
+      ready: 0,
+      delivered: 0,
+      cancelled: 0,
+    });
+
+    const customerOrderCounts = new Map<string, number>();
+    orders.forEach((order) => {
+      if (!order.userId) return;
+      customerOrderCounts.set(order.userId, (customerOrderCounts.get(order.userId) ?? 0) + 1);
+    });
+
+    const productStats = new Map<string, {
+      id: string;
+      name: string;
+      count: number;
+      revenue: number;
+    }>();
+
+    menuItems.forEach((item) => {
+      productStats.set(item.id, {
+        id: item.id,
+        name: item.name,
+        count: 0,
+        revenue: 0,
+      });
+    });
+
+    filteredOrders
+      .filter((order) => order.status !== 'cancelled')
+      .forEach((order) => {
+        order.items.forEach((item) => {
+          const id = item.productId || item.name;
+          const current = productStats.get(id) ?? {
+            id,
+            name: item.name,
+            count: 0,
+            revenue: 0,
+          };
+          current.count += item.quantity;
+          current.revenue += item.price * item.quantity;
+          productStats.set(id, current);
+        });
+      });
+
+    const productsBySales = Array.from(productStats.values());
+    const bestSellingProducts = [...productsBySales]
+      .filter((product) => product.count > 0)
+      .sort((a, b) => b.count - a.count || b.revenue - a.revenue)
+      .slice(0, 5);
+    const worstSellingProducts = [...productsBySales]
+      .sort((a, b) => a.count - b.count || a.revenue - b.revenue)
+      .slice(0, 5);
+
+    const buildDailySeries = (days: number) => {
+      const buckets = getLastDays(days).map((day) => ({
+        ...day,
+        revenue: 0,
+        orders: 0,
+      }));
+      const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+      orders.forEach((order) => {
+        const bucket = bucketMap.get(formatDayKey(new Date(order.createdAt)));
+        if (!bucket) return;
+        bucket.orders += 1;
+        if (order.status === 'delivered') {
+          bucket.revenue += order.totalPrice;
+        }
+      });
+
+      return buckets;
+    };
+
+    return {
+      filteredOrders,
+      todayOrdersCount: todayOrders.length,
+      todayRevenue,
+      totalRevenue,
+      filteredRevenue,
+      statusCounts,
+      returningCustomers: Array.from(customerOrderCounts.values()).filter((count) => count > 1).length,
+      bestSellingProducts,
+      worstSellingProducts,
+      topProducts: bestSellingProducts.slice(0, 5),
+      sevenDaySeries: buildDailySeries(7),
+      thirtyDaySeries: buildDailySeries(30),
+    };
+  }, [analyticsRange, menuItems, orders]);
+
+  const totalRevenue = analytics.totalRevenue;
   const totalOrdersCount = orders.length;
-  
   const pendingOrders = orders.filter(o => ACTIVE_ORDER_STATUSES.includes(o.status));
   const visibleOrders = orderStatusFilter === 'all'
     ? orders
     : orders.filter((order) => order.status === orderStatusFilter);
-
-  // Count item frequency for analytics
-  const popularStats: { [name: string]: number } = {};
-  orders.forEach(ord => {
-    ord.items.forEach(itm => {
-      popularStats[itm.name] = (popularStats[itm.name] || 0) + itm.quantity;
-    });
-  });
-
-  const popularSorted = Object.entries(popularStats)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
+  const popularSorted = analytics.bestSellingProducts.map((product) => ({
+    name: product.name,
+    count: product.count,
+  }));
 
   const handleAdminSignIn = async () => {
     setAuthLoading(true);
@@ -472,6 +705,34 @@ export default function AdminPanel({
               key="stats-tab"
               className="space-y-6"
             >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <span className="text-white text-lg font-black block">Analytics Dashboard</span>
+                  <span className="text-xs text-stone-500">Live Firestore orders with aggregate user counts</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ['today', 'Today'],
+                    ['7d', 'Last 7 days'],
+                    ['30d', 'Last 30 days'],
+                    ['all', 'All time'],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setAnalyticsRange(value as AnalyticsRange)}
+                      className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                        analyticsRange === value
+                          ? 'bg-amber-500 text-stone-950'
+                          : 'bg-stone-800 text-stone-300 hover:bg-stone-700'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Cards Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 
@@ -514,6 +775,37 @@ export default function AdminPanel({
                   </div>
                 </div>
 
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                <StatCard
+                  label="Today's Orders"
+                  value={analytics.todayOrdersCount}
+                  detail="Created since local midnight"
+                  icon={<ShoppingCart className="w-7 h-7" />}
+                  tone="blue"
+                />
+                <StatCard
+                  label="Today's Revenue"
+                  value={formatMoney(analytics.todayRevenue)}
+                  detail="Delivered orders today"
+                  icon={<DollarSign className="w-7 h-7" />}
+                  tone="green"
+                />
+                <StatCard
+                  label="Total Users"
+                  value={userStatsLoading ? '...' : userStats.totalUsers}
+                  detail={userStatsError ?? 'Registered Firebase users'}
+                  icon={<Users className="w-7 h-7" />}
+                  tone={userStatsError ? 'red' : 'purple'}
+                />
+                <StatCard
+                  label="Total Products"
+                  value={menuItems.length}
+                  detail="Current managed menu items"
+                  icon={<Package className="w-7 h-7" />}
+                  tone="amber"
+                />
               </div>
 
               {/* Advanced info: Popular Items & Latest reviews */}
@@ -565,6 +857,221 @@ export default function AdminPanel({
                   </div>
                 </div>
 
+              </div>
+
+              {ordersError && (
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
+                  {ordersError}
+                </div>
+              )}
+
+              {ordersLoading && orders.length === 0 && (
+                <div className="rounded-3xl border border-stone-800 bg-stone-950/70 p-8 text-center">
+                  <Loader2 className="mx-auto mb-3 h-7 w-7 animate-spin text-amber-500 motion-reduce:animate-none" />
+                  <p className="text-sm font-bold text-stone-300">Loading analytics from Firestore...</p>
+                </div>
+              )}
+
+              {!ordersLoading && orders.length === 0 && (
+                <div className="rounded-3xl border border-dashed border-stone-700 bg-stone-950/70 p-8 text-center">
+                  <p className="text-sm font-bold text-stone-300">No order analytics yet.</p>
+                  <p className="mt-1 text-xs text-stone-500">Orders created from checkout will appear here.</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-7 rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
+                  <div className="mb-5 flex items-center justify-between">
+                    <span className="text-lg font-black text-white">Product Analytics</span>
+                    <span className="text-[10px] font-mono uppercase text-stone-500">
+                      {analyticsRange === 'all' ? 'All time' : analyticsRange}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                    <div>
+                      <span className="mb-3 block text-xs font-black uppercase tracking-wide text-green-400">Best selling</span>
+                      <div className="space-y-3">
+                        {analytics.bestSellingProducts.length > 0 ? analytics.bestSellingProducts.map((product, index) => (
+                          <div key={product.id} className="rounded-2xl border border-stone-800 bg-stone-900/70 p-3">
+                            <div className="flex items-start justify-between gap-3 text-xs">
+                              <span className="font-bold text-stone-100">#{index + 1} {product.name}</span>
+                              <span className="font-mono font-black text-amber-400">{product.count}</span>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between text-[10px] text-stone-500">
+                              <span>Revenue</span>
+                              <span className="font-mono text-stone-300">{formatMoney(product.revenue)}</span>
+                            </div>
+                          </div>
+                        )) : (
+                          <p className="rounded-2xl border border-dashed border-stone-800 p-4 text-center text-xs text-stone-500">No product sales yet.</p>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="mb-3 block text-xs font-black uppercase tracking-wide text-red-400">Worst selling</span>
+                      <div className="space-y-3">
+                        {analytics.worstSellingProducts.map((product) => (
+                          <div key={product.id} className="rounded-2xl border border-stone-800 bg-stone-900/70 p-3">
+                            <div className="flex items-start justify-between gap-3 text-xs">
+                              <span className="font-bold text-stone-100">{product.name}</span>
+                              <span className="font-mono font-black text-stone-400">{product.count}</span>
+                            </div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-800">
+                              <div
+                                className="h-full rounded-full bg-red-500"
+                                style={{
+                                  width: `${Math.min(100, product.count / Math.max(1, analytics.bestSellingProducts[0]?.count ?? 1) * 100)}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-5 rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
+                  <span className="mb-5 block text-lg font-black text-white">Order Analytics</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    {ORDER_STATUSES.map((status) => (
+                      <div key={status} className={`rounded-2xl border p-4 ${getOrderStatusClass(status)}`}>
+                        <span className="block text-[10px] font-black uppercase tracking-wide">{getOrderStatusLabel(status)}</span>
+                        <span className="mt-1 block font-mono text-2xl font-black">{analytics.statusCounts[status]}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
+                  <span className="text-lg font-black text-white">Customer Analytics</span>
+                  <div className="mt-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-stone-400">Total registered users</span>
+                      <span className="font-mono text-xl font-black text-white">{userStatsLoading ? '...' : userStats.totalUsers}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-stone-400">Returning customers</span>
+                      <span className="font-mono text-xl font-black text-amber-400">{analytics.returningCustomers}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-stone-400">New users today</span>
+                      <span className="font-mono text-xl font-black text-green-400">{userStatsLoading ? '...' : userStats.newUsersToday}</span>
+                    </div>
+                    {userStatsError && <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{userStatsError}</p>}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6 lg:col-span-2">
+                  <div className="mb-5 flex items-center justify-between">
+                    <span className="text-lg font-black text-white">Revenue Last 7 Days</span>
+                    <span className="font-mono text-xs font-black text-amber-400">{formatMoney(analytics.sevenDaySeries.reduce((sum, day) => sum + day.revenue, 0))}</span>
+                  </div>
+                  <div className="flex h-44 items-end gap-2">
+                    {analytics.sevenDaySeries.map((day) => {
+                      const maxRevenue = Math.max(1, ...analytics.sevenDaySeries.map((item) => item.revenue));
+                      return (
+                        <div key={day.key} className="flex h-full flex-1 flex-col justify-end gap-2">
+                          <div
+                            className="min-h-1 rounded-t-xl bg-gradient-to-t from-amber-600 to-amber-400"
+                            title={`${day.label}: ${formatMoney(day.revenue)}`}
+                            style={{ height: `${Math.max(4, (day.revenue / maxRevenue) * 100)}%` }}
+                          />
+                          <span className="truncate text-center text-[9px] text-stone-500">{day.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
+                  <span className="mb-5 block text-lg font-black text-white">Orders Last 7 Days</span>
+                  <div className="flex h-40 items-end gap-2">
+                    {analytics.sevenDaySeries.map((day) => {
+                      const maxOrders = Math.max(1, ...analytics.sevenDaySeries.map((item) => item.orders));
+                      return (
+                        <div key={day.key} className="flex h-full flex-1 flex-col justify-end gap-2">
+                          <div
+                            className="min-h-1 rounded-t-xl bg-blue-500"
+                            title={`${day.label}: ${day.orders} orders`}
+                            style={{ height: `${Math.max(4, (day.orders / maxOrders) * 100)}%` }}
+                          />
+                          <span className="truncate text-center text-[9px] text-stone-500">{day.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
+                  <span className="mb-5 block text-lg font-black text-white">Orders By Status</span>
+                  <div className="space-y-3">
+                    {ORDER_STATUSES.map((status) => {
+                      const maxStatus = Math.max(1, ...ORDER_STATUSES.map((item) => analytics.statusCounts[item]));
+                      return (
+                        <div key={status}>
+                          <div className="mb-1 flex justify-between text-xs">
+                            <span className="font-bold text-stone-300">{getOrderStatusLabel(status)}</span>
+                            <span className="font-mono text-stone-500">{analytics.statusCounts[status]}</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-stone-800">
+                            <div
+                              className="h-full rounded-full bg-amber-500"
+                              style={{ width: `${(analytics.statusCounts[status] / maxStatus) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
+                  <span className="mb-5 block text-lg font-black text-white">Top 5 Products</span>
+                  <div className="space-y-3">
+                    {analytics.topProducts.length > 0 ? analytics.topProducts.map((product) => (
+                      <div key={product.id}>
+                        <div className="mb-1 flex justify-between gap-3 text-xs">
+                          <span className="truncate font-bold text-stone-300">{product.name}</span>
+                          <span className="font-mono text-stone-500">{product.count}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-stone-800">
+                          <div
+                            className="h-full rounded-full bg-green-500"
+                            style={{ width: `${(product.count / Math.max(1, analytics.topProducts[0]?.count ?? 1)) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    )) : (
+                      <p className="rounded-2xl border border-dashed border-stone-800 p-4 text-center text-xs text-stone-500">No product sales in this range.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
+                <div className="mb-5 flex items-center justify-between">
+                  <span className="text-lg font-black text-white">Revenue Last 30 Days</span>
+                  <span className="font-mono text-xs font-black text-amber-400">{formatMoney(analytics.thirtyDaySeries.reduce((sum, day) => sum + day.revenue, 0))}</span>
+                </div>
+                <div className="flex h-44 items-end gap-1">
+                  {analytics.thirtyDaySeries.map((day) => {
+                    const maxRevenue = Math.max(1, ...analytics.thirtyDaySeries.map((item) => item.revenue));
+                    return (
+                      <div key={day.key} className="flex h-full flex-1 flex-col justify-end">
+                        <div
+                          className="min-h-1 rounded-t bg-amber-500"
+                          title={`${day.label}: ${formatMoney(day.revenue)}`}
+                          style={{ height: `${Math.max(4, (day.revenue / maxRevenue) * 100)}%` }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </motion.div>
           )}
