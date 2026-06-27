@@ -10,7 +10,9 @@ export interface MenuItem {
   descriptionEn: string;
   price: number;
   image: string;
-  category: 'classic' | 'special' | 'combos' | 'drinks' | 'sides';
+  category: string;
+  available?: boolean;
+  discountPercent?: number;
   spicyLevel: 0 | 1 | 2 | 3;
   popular: boolean;
   sizes: {

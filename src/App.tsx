@@ -402,6 +402,26 @@ export default function App() {
     );
   };
 
+  const handleUpdateMenuAvailability = (itemId: string, available: boolean) => {
+    setMenuItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, available } : item))
+    );
+  };
+
+  const handleUpdateMenuDiscount = (itemId: string, discountPercent?: number) => {
+    setMenuItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              discountPercent:
+                discountPercent && discountPercent > 0 ? discountPercent : undefined,
+            }
+          : item
+      )
+    );
+  };
+
   const handleAddNewMenuItem = (newItem: MenuItem) => {
     setMenuItems((prev) => [...prev, newItem]);
   };
@@ -504,6 +524,8 @@ export default function App() {
               onUpdateOrderStatus={handleUpdateOrderStatus}
               onDeleteOrder={handleDeleteOrder}
               onUpdateMenuPrice={handleUpdateMenuPrice}
+              onUpdateMenuAvailability={handleUpdateMenuAvailability}
+              onUpdateMenuDiscount={handleUpdateMenuDiscount}
               onAddNewMenuItem={handleAddNewMenuItem}
               onDeleteMenuItem={handleDeleteMenuItem}
               onApproveReview={handleApproveReview}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MenuItem, CartItem } from '../types';
 import { Flame, Star, ShoppingCart, Plus, Check, X, ShieldAlert, Sparkles } from 'lucide-react';
@@ -19,7 +19,7 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
   const [selectedCustomizations, setSelectedCustomizations] = useState<string[]>([]);
   const [quantity, setQuantity] = useState<number>(1);
 
-  const categories = [
+  const predefinedCategories = [
     { id: 'all', icon: '✦', translationKey: 'menu.categories.all' },
     { id: 'special', icon: '✨', translationKey: 'menu.categories.special' },
     { id: 'classic', icon: '🌯', translationKey: 'menu.categories.classic' },
@@ -28,11 +28,26 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
     { id: 'sides', icon: '🧀', translationKey: 'menu.categories.sides' }
   ];
 
+  const categories = useMemo(() => {
+    const existingIds = new Set(predefinedCategories.map((category) => category.id));
+    const customCategories = Array.from(new Set(menuItems.map((item) => item.category)))
+      .filter((category) => category && !existingIds.has(category))
+      .map((category) => ({ id: category, icon: '•', label: category }));
+
+    return [...predefinedCategories, ...customCategories];
+  }, [menuItems]);
+
   const filteredItems = selectedCategory === 'all'
     ? menuItems
     : menuItems.filter(item => item.category === selectedCategory);
 
+  const getDiscountedPrice = (item: MenuItem) => {
+    if (!item.discountPercent || item.discountPercent <= 0) return item.price;
+    return Number((item.price * (1 - Math.min(item.discountPercent, 100) / 100)).toFixed(2));
+  };
+
   const handleOpenCustomize = (item: MenuItem) => {
+    if (item.available === false) return;
     setCustomizingItem(item);
     setSelectedSizeIdx(0);
     setSelectedCustomizations([]);
@@ -49,7 +64,7 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
   const calculateCurrentPrice = () => {
     if (!customizingItem) return 0;
     const sizeMultiplier = customizingItem.sizes[selectedSizeIdx]?.multiplier || 1;
-    const basePrice = customizingItem.price * sizeMultiplier;
+    const basePrice = getDiscountedPrice(customizingItem) * sizeMultiplier;
     
     const customizationsPrice = selectedCustomizations.reduce((acc, cId) => {
       const custObj = customizingItem.customizations.find(c => c.id === cId);
@@ -63,7 +78,7 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
     if (!customizingItem) return;
     
     const sizeLabel = customizingItem.sizes[selectedSizeIdx].label;
-    const finalSinglePrice = (customizingItem.price * customizingItem.sizes[selectedSizeIdx].multiplier) + 
+    const finalSinglePrice = (getDiscountedPrice(customizingItem) * customizingItem.sizes[selectedSizeIdx].multiplier) + 
       selectedCustomizations.reduce((acc, cId) => {
         const custObj = customizingItem?.customizations.find(c => c.id === cId);
         return acc + (custObj?.price || 0);
@@ -112,7 +127,7 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
               aria-pressed={selectedCategory === cat.id}
             >
               <span className="mr-2" aria-hidden="true">{cat.icon}</span>
-              {t(cat.translationKey)}
+              {'translationKey' in cat ? t(cat.translationKey) : cat.label}
             </button>
           ))}
         </div>
@@ -147,8 +162,20 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
                     </div>
                   )}
 
+                  {item.available === false && (
+                    <div className="absolute inset-x-3 bottom-3 bg-stone-950/90 text-white px-3 py-2 rounded-2xl text-[10px] font-black tracking-wide text-center border border-white/10">
+                      UNAVAILABLE
+                    </div>
+                  )}
+
+                  {item.discountPercent ? (
+                    <div className="absolute top-3 right-3 bg-red-600 text-white px-2.5 py-1 rounded-xl text-[10px] font-black shadow-md">
+                      -{item.discountPercent}%
+                    </div>
+                  ) : null}
+
                   {/* Spicy rate display */}
-                  {item.spicyLevel > 0 && (
+                  {item.spicyLevel > 0 && !item.discountPercent && (
                     <div className="absolute top-3 right-3 bg-stone-900/90 backdrop-blur-md px-2.5 py-1 rounded-xl flex items-center space-x-0.5 border border-stone-800">
                       {[...Array(item.spicyLevel)].map((_, idx) => (
                         <Flame key={idx} className="w-3.5 h-3.5 text-red-500 fill-current animate-pulse" />
@@ -172,13 +199,19 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
                     <div>
                       <span className="text-[10px] text-stone-400 block font-mono font-medium">ფასი იწყება</span>
                       <span className="text-xl font-mono font-extrabold text-stone-950">
-                        ₾{item.price.toFixed(2)}
+                        ₾{getDiscountedPrice(item).toFixed(2)}
                       </span>
+                      {item.discountPercent ? (
+                        <span className="ml-2 text-xs font-mono text-stone-400 line-through">
+                          ₾{item.price.toFixed(2)}
+                        </span>
+                      ) : null}
                     </div>
 
                     <button
                       onClick={() => handleOpenCustomize(item)}
-                      className="px-4 py-2 bg-stone-950 text-white font-extrabold text-xs rounded-xl hover:bg-amber-500 hover:text-stone-950 transition-colors flex items-center space-x-1 shadow-sm cursor-pointer"
+                      disabled={item.available === false}
+                      className="px-4 py-2 bg-stone-950 text-white font-extrabold text-xs rounded-xl hover:bg-amber-500 hover:text-stone-950 transition-colors flex items-center space-x-1 shadow-sm cursor-pointer disabled:bg-stone-200 disabled:text-stone-500 disabled:cursor-not-allowed"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>შეუკვეთე</span>
@@ -251,7 +284,7 @@ export default function Menu({ menuItems, onAddToCart }: MenuProps) {
                     </span>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {customizingItem.sizes.map((size, index) => {
-                        const multipliedPrice = customizingItem.price * size.multiplier;
+                        const multipliedPrice = getDiscountedPrice(customizingItem) * size.multiplier;
                         const isSelected = selectedSizeIdx === index;
                         return (
                           <button

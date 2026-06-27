@@ -17,6 +17,8 @@ interface AdminPanelProps {
   onUpdateOrderStatus: (orderId: string, status: Order['status']) => void;
   onDeleteOrder: (orderId: string) => void;
   onUpdateMenuPrice: (itemId: string, newPrice: number) => void;
+  onUpdateMenuAvailability: (itemId: string, available: boolean) => void;
+  onUpdateMenuDiscount: (itemId: string, discountPercent?: number) => void;
   onAddNewMenuItem: (newItem: MenuItem) => void;
   onDeleteMenuItem: (itemId: string) => void;
   onApproveReview: (reviewId: string) => void;
@@ -54,6 +56,8 @@ export default function AdminPanel({
   onUpdateOrderStatus,
   onDeleteOrder,
   onUpdateMenuPrice,
+  onUpdateMenuAvailability,
+  onUpdateMenuDiscount,
   onAddNewMenuItem,
   onDeleteMenuItem,
   onApproveReview,
@@ -73,7 +77,9 @@ export default function AdminPanel({
   const [newDesc, setNewDesc] = useState('');
   const [newPrice, setNewPrice] = useState(10);
   const [newImage, setNewImage] = useState('https://images.unsplash.com/photo-1662116765994-4e2c918be177?auto=format&fit=crop&q=80&w=400');
-  const [newCat, setNewCat] = useState<'classic' | 'special' | 'combos' | 'drinks' | 'sides'>('classic');
+  const [newCat, setNewCat] = useState('classic');
+  const [newAvailable, setNewAvailable] = useState(true);
+  const [newDiscountPercent, setNewDiscountPercent] = useState('');
 
   useEffect(() => {
     if (!isAdminAuthorized) {
@@ -226,17 +232,26 @@ export default function AdminPanel({
 
   const handleCreateMenuItem = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim() || !newDesc.trim()) return;
+    if (!newTitle.trim() || !newDesc.trim() || !newCat.trim()) return;
+
+    const basePrice = Number(newPrice);
+    const discountPercent = Number(newDiscountPercent);
+    const normalizedDiscount =
+      Number.isFinite(discountPercent) && discountPercent > 0
+        ? Math.min(discountPercent, 100)
+        : undefined;
 
     const newItem: MenuItem = {
       id: `men-${Date.now()}`,
-      name: newTitle,
-      nameEn: newTitle,
-      description: newDesc,
-      descriptionEn: newDesc,
-      price: Number(newPrice),
+      name: newTitle.trim(),
+      nameEn: newTitle.trim(),
+      description: newDesc.trim(),
+      descriptionEn: newDesc.trim(),
+      price: basePrice,
       image: newImage,
-      category: newCat,
+      category: newCat.trim(),
+      available: newAvailable,
+      discountPercent: normalizedDiscount,
       spicyLevel: 0,
       popular: false,
       sizes: [
@@ -254,8 +269,15 @@ export default function AdminPanel({
     setNewTitle('');
     setNewDesc('');
     setNewPrice(10);
+    setNewCat('classic');
+    setNewAvailable(true);
+    setNewDiscountPercent('');
     setIsAddingItem(false);
   };
+
+  const categoryOptions = Array.from(
+    new Set(['classic', 'special', 'combos', 'drinks', 'sides', ...menuItems.map((item) => item.category)])
+  ).filter(Boolean);
 
   return (
     <div className="min-h-screen bg-stone-900 text-stone-100 font-sans p-4 sm:p-8 relative charcoal-grid-bg">
@@ -668,6 +690,46 @@ export default function AdminPanel({
                         <option value="drinks">სასმელები 🥤</option>
                         <option value="sides">გარნირები 🧀</option>
                       </select>
+                      <input
+                        type="text"
+                        list="admin-product-categories"
+                        value={newCat}
+                        onChange={(e) => setNewCat(e.target.value)}
+                        placeholder="Custom category"
+                        className="mt-2 w-full bg-stone-900 border border-stone-800 rounded-xl py-2 px-3 text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-500"
+                      />
+                      <datalist id="admin-product-categories">
+                        {categoryOptions.map((category) => (
+                          <option key={category} value={category} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">Availability</label>
+                        <select
+                          value={newAvailable ? 'available' : 'unavailable'}
+                          onChange={(e) => setNewAvailable(e.target.value === 'available')}
+                          className="w-full bg-stone-900 border border-stone-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                        >
+                          <option value="available">Available</option>
+                          <option value="unavailable">Unavailable</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">Discount %</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={newDiscountPercent}
+                          onChange={(e) => setNewDiscountPercent(e.target.value)}
+                          placeholder="Optional"
+                          className="w-full bg-stone-900 border border-stone-800 rounded-xl py-2 px-3 text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-1">
@@ -721,10 +783,55 @@ export default function AdminPanel({
                         </span>
                         <h4 className="text-sm font-bold text-white mt-1.5 leading-tight">{itm.name}</h4>
                         <span className="text-[10px] text-stone-500 block leading-tight mt-0.5">ID: {itm.id}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                          <span
+                            className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                              itm.available === false
+                                ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                : 'bg-green-500/10 text-green-400 border border-green-500/20'
+                            }`}
+                          >
+                            {itm.available === false ? 'UNAVAILABLE' : 'AVAILABLE'}
+                          </span>
+                          {itm.discountPercent ? (
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              -{itm.discountPercent}%
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-3">
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                      <div className="text-right">
+                        <span className="text-[9px] text-stone-550 block font-mono">STATUS</span>
+                        <select
+                          value={itm.available === false ? 'unavailable' : 'available'}
+                          onChange={(e) => onUpdateMenuAvailability(itm.id, e.target.value === 'available')}
+                          className="bg-stone-900 border border-stone-800 text-white rounded px-1.5 py-0.5 w-28 text-xs focus:outline-all"
+                        >
+                          <option value="available">Available</option>
+                          <option value="unavailable">Unavailable</option>
+                        </select>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] text-stone-550 block font-mono">DISCOUNT %</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          className="bg-stone-900 border border-stone-800 text-white font-mono rounded px-1.5 py-0.5 w-16 text-center text-xs focus:outline-all"
+                          value={itm.discountPercent ?? ''}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            onUpdateMenuDiscount(
+                              itm.id,
+                              Number.isFinite(value) ? Math.min(value, 100) : undefined
+                            );
+                          }}
+                        />
+                      </div>
                       <div className="text-right">
                         <span className="text-[9px] text-stone-550 block font-mono">საწყისი ფასი</span>
                         <div className="flex items-center space-x-1.5 pt-0.5">
