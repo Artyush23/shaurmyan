@@ -125,6 +125,31 @@ service cloud.firestore {
         || (request.auth != null && resource.data.userId == request.auth.uid);
     }
 
+    match /favorites/{favoriteId} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll([
+          'id',
+          'userId',
+          'productId',
+          'createdAt',
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'userId',
+          'productId',
+          'createdAt',
+        ])
+        && request.resource.data.id == favoriteId
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.productId is string
+        && favoriteId == request.auth.uid + '_' + request.resource.data.productId;
+
+      allow read, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+
+      allow update: if false;
+    }
+
     match /notifications/{notificationId} {
       allow create: if request.auth != null
         && request.resource.data.keys().hasAll([
