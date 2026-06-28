@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { Review } from '../types';
 import { Star, Sparkles } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface ReviewsProps {
   reviews: Review[];
@@ -9,6 +10,7 @@ interface ReviewsProps {
 }
 
 export default function Reviews({ reviews, reviewsLoading = false, reviewsError = null }: ReviewsProps) {
+  const { t } = useTranslation();
   const approvedReviews = reviews.filter((review) => review.approved !== false && review.comment.trim());
   const averageRating = approvedReviews.length > 0
     ? (approvedReviews.reduce((sum, review) => sum + review.rating, 0) / approvedReviews.length).toFixed(1)
@@ -22,13 +24,13 @@ export default function Reviews({ reviews, reviewsLoading = false, reviewsError 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <span className="text-amber-500 font-extrabold text-xs uppercase tracking-widest font-mono">
-            REVIEWS & FEEDBACK
+            {t('reviews.title')}
           </span>
           <h2 className="text-3xl sm:text-5xl font-black font-sans text-white tracking-tight mt-1 mb-4">
-            Customer product ratings
+            {t('reviews.title')}
           </h2>
           <p className="text-stone-400 text-xs sm:text-sm font-light">
-            Real reviews left from product cards by signed-in ShaurmYAN customers.
+            {t('reviews.subtitle')}
           </p>
         </div>
 
@@ -37,11 +39,11 @@ export default function Reviews({ reviews, reviewsLoading = false, reviewsError 
             <div className="bg-stone-900 border border-stone-800 p-6 rounded-3xl shadow-xl flex items-center justify-between">
               <div>
                 <span className="text-stone-400 text-[10px] block font-mono font-bold tracking-wider uppercase">
-                  Average rating
+                  {t('hero.rating')}
                 </span>
                 <span className="text-4xl font-mono font-black text-white">{averageRating}</span>
                 <span className="text-xs text-stone-400 block mt-1">
-                  Based on {approvedReviews.length} product reviews
+                  {t('reviews.basedOn', { count: approvedReviews.length })}
                 </span>
               </div>
               <div className="text-right">
@@ -51,15 +53,15 @@ export default function Reviews({ reviews, reviewsLoading = false, reviewsError 
                   ))}
                 </div>
                 <span className="text-[10px] block text-stone-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/10 mt-2">
-                  Product-level feedback
+                  {t('reviews.subtitle')}
                 </span>
               </div>
             </div>
 
             <div className="bg-stone-900 border border-stone-800 p-6 sm:p-8 rounded-3xl shadow-xl">
-              <h3 className="text-lg font-bold">Leave a review</h3>
+              <h3 className="text-lg font-bold">{t('reviews.leaveReview')}</h3>
               <p className="text-xs text-stone-400 leading-relaxed mt-3">
-                Open any product from the menu to rate it, write a review, or update your existing review.
+                {t('menu.modal.shareReview')}
               </p>
             </div>
           </div>
@@ -67,7 +69,7 @@ export default function Reviews({ reviews, reviewsLoading = false, reviewsError 
           <div className="lg:col-span-8">
             {reviewsLoading ? (
               <div className="text-center py-12 p-8 bg-stone-900 rounded-3xl border border-stone-800">
-                <p className="text-stone-400 text-sm">Loading reviews...</p>
+                <p className="text-stone-400 text-sm">{t('reviews.loading')}</p>
               </div>
             ) : reviewsError ? (
               <div className="text-center py-12 p-8 bg-red-950/40 rounded-3xl border border-red-900/60">
@@ -129,7 +131,7 @@ export default function Reviews({ reviews, reviewsLoading = false, reviewsError 
 
                 {approvedReviews.length === 0 && (
                   <div className="text-center py-12 p-8 bg-stone-900 rounded-3xl border border-dashed border-stone-800">
-                    <p className="text-stone-400 text-sm">No product reviews yet.</p>
+                    <p className="text-stone-400 text-sm">{t('reviews.empty')}</p>
                   </div>
                 )}
               </div>

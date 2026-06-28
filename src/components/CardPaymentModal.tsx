@@ -26,6 +26,7 @@ import {
   type SavedCard,
   type BankCardEntry,
 } from '../utils/cardPayment';
+import { useTranslation } from 'react-i18next';
 
 interface CardPaymentModalProps {
   isOpen: boolean;
@@ -70,6 +71,7 @@ export default function CardPaymentModal({
   onPaymentSuccess,
   customerPhone,
 }: CardPaymentModalProps) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<PaymentStep>('entry');
   const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
   const [holderName, setHolderName] = useState(cardholderName);
@@ -385,7 +387,7 @@ export default function CardPaymentModal({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <p className="text-base font-black text-stone-950">Processing secure payment...</p>
+                    <p className="text-base font-black text-stone-950">{t('payment.processing')}</p>
                     <p className="text-xs text-stone-500 font-medium max-w-xs leading-relaxed">
                       თქვენი გადახდა დაცულად მუშავდება. გთხოვთ, არ დახუროთ ეს ფანჯარა.
                     </p>
@@ -417,7 +419,7 @@ export default function CardPaymentModal({
                         <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-stone-400">
                           Verified by Visa / Mastercard
                         </p>
-                        <p className="text-sm font-black text-stone-950">3D Secure Verification</p>
+                        <p className="text-sm font-black text-stone-950">{t('payment.secure3d')}</p>
                       </div>
                     </div>
 

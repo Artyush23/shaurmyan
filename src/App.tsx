@@ -31,6 +31,7 @@ import RequireAdmin from './components/RequireAdmin';
 import UserProfile from './components/UserProfile';
 import { INITIAL_MENU, INITIAL_REVIEWS } from './data/initialData';
 import { useAuth } from './hooks/useAuth';
+import { useTranslation } from 'react-i18next';
 
 type CheckoutArgs = [
   string,
@@ -90,6 +91,7 @@ function getSchemaJsonLd() {
 }
 
 export default function App() {
+  const { t } = useTranslation();
   const { user, profile, loading: authLoading, isAdmin: isAdminUser } = useAuth();
   const [activeView, setActiveView] = useState<'client' | 'admin' | 'banking' | 'profile'>('client');
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -810,16 +812,16 @@ export default function App() {
               <span className="block text-amber-500 font-black text-xs uppercase tracking-widest font-mono mb-2">
                 Secure Access
               </span>
-              <h2 className="text-2xl font-black text-white">Sign-in required</h2>
+              <h2 className="text-2xl font-black text-white">{t('app.signInRequired')}</h2>
               <p className="mt-3 text-sm text-stone-400 leading-relaxed">
-                Sign in to open your protected ShaurmYAN profile, saved cards, and account activity.
+                {t('app.signInRequiredDescription')}
               </p>
               <button
                 type="button"
                 onClick={handleOpenProfile}
                 className="mt-6 w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-sm shadow-xl transition-all duration-200 cursor-pointer"
               >
-                Sign in to continue
+                {t('app.signInToContinue')}
               </button>
             </div>
           </section>

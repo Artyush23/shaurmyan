@@ -19,6 +19,7 @@ import {
   TrendingUp, ShoppingCart, MessageSquare, Plus, Trash2,
   Check, DollarSign, ShieldAlert, Loader2, LogIn, Users, Package, Bell,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface AdminPanelProps {
   menuItems: MenuItem[];
@@ -213,6 +214,7 @@ export default function AdminPanel({
   onApproveReview,
   onDeleteReview,
 }: AdminPanelProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'stats' | 'orders' | 'menu' | 'reviews'>('stats');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -823,8 +825,8 @@ export default function AdminPanel({
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <span className="text-white text-lg font-black block">Analytics Dashboard</span>
-                  <span className="text-xs text-stone-500">Live Firestore orders with aggregate user counts</span>
+                  <span className="text-white text-lg font-black block">{t('admin.analyticsDashboard')}</span>
+                  <span className="text-xs text-stone-500">{t('admin.analyticsDescription')}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -856,7 +858,7 @@ export default function AdminPanel({
                       <Bell className="h-5 w-5" />
                     </div>
                     <div>
-                      <span className="block text-sm font-black text-white">Admin Notifications</span>
+                      <span className="block text-sm font-black text-white">{t('admin.notifications')}</span>
                       <span className="text-xs text-stone-500">
                         {unreadAdminNotifications.length} unread of {notifications.length}
                       </span>
@@ -1065,28 +1067,28 @@ export default function AdminPanel({
               {ordersLoading && orders.length === 0 && (
                 <div className="rounded-3xl border border-stone-800 bg-stone-950/70 p-8 text-center">
                   <Loader2 className="mx-auto mb-3 h-7 w-7 animate-spin text-amber-500 motion-reduce:animate-none" />
-                  <p className="text-sm font-bold text-stone-300">Loading analytics from Firestore...</p>
+                  <p className="text-sm font-bold text-stone-300">{t('admin.loadingAnalytics')}</p>
                 </div>
               )}
 
               {!ordersLoading && orders.length === 0 && (
                 <div className="rounded-3xl border border-dashed border-stone-700 bg-stone-950/70 p-8 text-center">
-                  <p className="text-sm font-bold text-stone-300">No order analytics yet.</p>
-                  <p className="mt-1 text-xs text-stone-500">Orders created from checkout will appear here.</p>
+                  <p className="text-sm font-bold text-stone-300">{t('admin.noAnalytics')}</p>
+                  <p className="mt-1 text-xs text-stone-500">{t('admin.ordersAppear')}</p>
                 </div>
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <div className="lg:col-span-7 rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
                   <div className="mb-5 flex items-center justify-between">
-                    <span className="text-lg font-black text-white">Product Analytics</span>
+                    <span className="text-lg font-black text-white">{t('admin.productAnalytics')}</span>
                     <span className="text-[10px] font-mono uppercase text-stone-500">
                       {analyticsRange === 'all' ? 'All time' : analyticsRange}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                     <div>
-                      <span className="mb-3 block text-xs font-black uppercase tracking-wide text-green-400">Best selling</span>
+                      <span className="mb-3 block text-xs font-black uppercase tracking-wide text-green-400">{t('admin.bestSelling')}</span>
                       <div className="space-y-3">
                         {analytics.bestSellingProducts.length > 0 ? analytics.bestSellingProducts.map((product, index) => (
                           <div key={product.id} className="rounded-2xl border border-stone-800 bg-stone-900/70 p-3">
@@ -1095,17 +1097,17 @@ export default function AdminPanel({
                               <span className="font-mono font-black text-amber-400">{product.count}</span>
                             </div>
                             <div className="mt-2 flex items-center justify-between text-[10px] text-stone-500">
-                              <span>Revenue</span>
+                              <span>{t('admin.revenue')}</span>
                               <span className="font-mono text-stone-300">{formatMoney(product.revenue)}</span>
                             </div>
                           </div>
                         )) : (
-                          <p className="rounded-2xl border border-dashed border-stone-800 p-4 text-center text-xs text-stone-500">No product sales yet.</p>
+                          <p className="rounded-2xl border border-dashed border-stone-800 p-4 text-center text-xs text-stone-500">{t('admin.noProductSales')}</p>
                         )}
                       </div>
                     </div>
                     <div>
-                      <span className="mb-3 block text-xs font-black uppercase tracking-wide text-red-400">Worst selling</span>
+                      <span className="mb-3 block text-xs font-black uppercase tracking-wide text-red-400">{t('admin.worstSelling')}</span>
                       <div className="space-y-3">
                         {analytics.worstSellingProducts.map((product) => (
                           <div key={product.id} className="rounded-2xl border border-stone-800 bg-stone-900/70 p-3">
@@ -1129,7 +1131,7 @@ export default function AdminPanel({
                 </div>
 
                 <div className="lg:col-span-5 rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
-                  <span className="mb-5 block text-lg font-black text-white">Order Analytics</span>
+                  <span className="mb-5 block text-lg font-black text-white">{t('admin.orderAnalytics')}</span>
                   <div className="grid grid-cols-2 gap-3">
                     {ORDER_STATUSES.map((status) => (
                       <div key={status} className={`rounded-2xl border p-4 ${getOrderStatusClass(status)}`}>
@@ -1143,18 +1145,18 @@ export default function AdminPanel({
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
-                  <span className="text-lg font-black text-white">Customer Analytics</span>
+                  <span className="text-lg font-black text-white">{t('admin.customerAnalytics')}</span>
                   <div className="mt-5 space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-stone-400">Total registered users</span>
+                      <span className="text-xs text-stone-400">{t('admin.totalUsers')}</span>
                       <span className="font-mono text-xl font-black text-white">{userStatsLoading ? '...' : userStats.totalUsers}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-stone-400">Returning customers</span>
+                      <span className="text-xs text-stone-400">{t('admin.returningCustomers')}</span>
                       <span className="font-mono text-xl font-black text-amber-400">{analytics.returningCustomers}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-stone-400">New users today</span>
+                      <span className="text-xs text-stone-400">{t('admin.newUsersToday')}</span>
                       <span className="font-mono text-xl font-black text-green-400">{userStatsLoading ? '...' : userStats.newUsersToday}</span>
                     </div>
                     {userStatsError && <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{userStatsError}</p>}
@@ -1163,7 +1165,7 @@ export default function AdminPanel({
 
                 <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6 lg:col-span-2">
                   <div className="mb-5 flex items-center justify-between">
-                    <span className="text-lg font-black text-white">Revenue Last 7 Days</span>
+                    <span className="text-lg font-black text-white">{t('admin.revenue7')}</span>
                     <span className="font-mono text-xs font-black text-amber-400">{formatMoney(analytics.sevenDaySeries.reduce((sum, day) => sum + day.revenue, 0))}</span>
                   </div>
                   <div className="flex h-44 items-end gap-2">
@@ -1186,7 +1188,7 @@ export default function AdminPanel({
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
-                  <span className="mb-5 block text-lg font-black text-white">Orders Last 7 Days</span>
+                  <span className="mb-5 block text-lg font-black text-white">{t('admin.orders7')}</span>
                   <div className="flex h-40 items-end gap-2">
                     {analytics.sevenDaySeries.map((day) => {
                       const maxOrders = Math.max(1, ...analytics.sevenDaySeries.map((item) => item.orders));
@@ -1205,7 +1207,7 @@ export default function AdminPanel({
                 </div>
 
                 <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
-                  <span className="mb-5 block text-lg font-black text-white">Orders By Status</span>
+                  <span className="mb-5 block text-lg font-black text-white">{t('admin.ordersByStatus')}</span>
                   <div className="space-y-3">
                     {ORDER_STATUSES.map((status) => {
                       const maxStatus = Math.max(1, ...ORDER_STATUSES.map((item) => analytics.statusCounts[item]));
@@ -1228,7 +1230,7 @@ export default function AdminPanel({
                 </div>
 
                 <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
-                  <span className="mb-5 block text-lg font-black text-white">Top 5 Products</span>
+                  <span className="mb-5 block text-lg font-black text-white">{t('admin.topProducts')}</span>
                   <div className="space-y-3">
                     {analytics.topProducts.length > 0 ? analytics.topProducts.map((product) => (
                       <div key={product.id}>
@@ -1244,7 +1246,7 @@ export default function AdminPanel({
                         </div>
                       </div>
                     )) : (
-                      <p className="rounded-2xl border border-dashed border-stone-800 p-4 text-center text-xs text-stone-500">No product sales in this range.</p>
+                      <p className="rounded-2xl border border-dashed border-stone-800 p-4 text-center text-xs text-stone-500">{t('admin.noSalesRange')}</p>
                     )}
                   </div>
                 </div>
@@ -1252,7 +1254,7 @@ export default function AdminPanel({
 
               <div className="rounded-3xl border border-stone-800 bg-stone-950/60 p-6">
                 <div className="mb-5 flex items-center justify-between">
-                  <span className="text-lg font-black text-white">Revenue Last 30 Days</span>
+                  <span className="text-lg font-black text-white">{t('admin.revenue30')}</span>
                   <span className="font-mono text-xs font-black text-amber-400">{formatMoney(analytics.thirtyDaySeries.reduce((sum, day) => sum + day.revenue, 0))}</span>
                 </div>
                 <div className="flex h-44 items-end gap-1">
@@ -1291,7 +1293,7 @@ export default function AdminPanel({
                       SYNCING...
                     </>
                   ) : (
-                    <>● LIVE FIRESTORE</>
+                    <>{t('admin.liveFirestore')}</>
                   )}
                 </span>
               </div>
@@ -1333,7 +1335,7 @@ export default function AdminPanel({
               {ordersLoading && orders.length === 0 ? (
                 <div className="text-center py-20 bg-stone-950 rounded-3xl border border-dashed border-stone-800">
                   <Loader2 className="w-8 h-8 text-amber-500 animate-spin motion-reduce:animate-none mx-auto mb-3" aria-hidden="true" />
-                  <p className="text-stone-400 text-sm">Firestore-იდან შეკვეთების ჩატვირთვა...</p>
+                  <p className="text-stone-400 text-sm">{t('admin.loadingOrders')}</p>
                 </div>
               ) : (
               visibleOrders.map(ord => {
@@ -1567,18 +1569,18 @@ export default function AdminPanel({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">Availability</label>
+                        <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">{t('admin.availability')}</label>
                         <select
                           value={newAvailable ? 'available' : 'unavailable'}
                           onChange={(e) => setNewAvailable(e.target.value === 'available')}
                           className="w-full bg-stone-900 border border-stone-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-amber-500"
                         >
-                          <option value="available">Available</option>
-                          <option value="unavailable">Unavailable</option>
+                          <option value="available">{t('admin.available')}</option>
+                          <option value="unavailable">{t('admin.unavailable')}</option>
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">Discount %</label>
+                        <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">{t('admin.discount')}</label>
                         <input
                           type="number"
                           min="0"
@@ -1593,7 +1595,7 @@ export default function AdminPanel({
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">Product image</label>
+                      <label className="text-[10px] text-stone-400 uppercase tracking-wide font-bold">{t('admin.productImage')}</label>
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
@@ -1604,7 +1606,7 @@ export default function AdminPanel({
                         }}
                         className="w-full bg-stone-900 border border-stone-800 rounded-xl py-2 px-3 text-xs text-white file:mr-3 file:rounded-lg file:border-0 file:bg-amber-500 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-stone-950 focus:outline-none focus:border-amber-500"
                       />
-                      <p className="text-[10px] text-stone-500">JPG, PNG, or WebP. Max 2 MB.</p>
+                      <p className="text-[10px] text-stone-500">{t('admin.imageHelp')}</p>
                     </div>
 
                     {imageUploadError && (
@@ -1706,7 +1708,7 @@ export default function AdminPanel({
 
                     <div className="flex flex-wrap items-center justify-end gap-3">
                       <div className="text-right">
-                        <span className="text-[9px] text-stone-550 block font-mono">IMAGE</span>
+                        <span className="text-[9px] text-stone-550 block font-mono">{t('admin.image')}</span>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -1722,18 +1724,18 @@ export default function AdminPanel({
                         />
                       </div>
                       <div className="text-right">
-                        <span className="text-[9px] text-stone-550 block font-mono">STATUS</span>
+                        <span className="text-[9px] text-stone-550 block font-mono">{t('admin.status')}</span>
                         <select
                           value={itm.available === false ? 'unavailable' : 'available'}
                           onChange={(e) => onUpdateMenuAvailability(itm.id, e.target.value === 'available')}
                           className="bg-stone-900 border border-stone-800 text-white rounded px-1.5 py-0.5 w-28 text-xs focus:outline-all"
                         >
-                          <option value="available">Available</option>
-                          <option value="unavailable">Unavailable</option>
+                          <option value="available">{t('admin.available')}</option>
+                          <option value="unavailable">{t('admin.unavailable')}</option>
                         </select>
                       </div>
                       <div className="text-right">
-                        <span className="text-[9px] text-stone-550 block font-mono">DISCOUNT %</span>
+                        <span className="text-[9px] text-stone-550 block font-mono">{t('admin.discount')}</span>
                         <input
                           type="number"
                           min="0"
@@ -1798,26 +1800,26 @@ export default function AdminPanel({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-3xl border border-stone-800 bg-stone-950/70 p-4">
                 <label className="space-y-1">
-                  <span className="block text-[10px] font-black uppercase tracking-wide text-stone-500">Product</span>
+                  <span className="block text-[10px] font-black uppercase tracking-wide text-stone-500">{t('admin.product')}</span>
                   <select
                     value={reviewProductFilter}
                     onChange={(event) => setReviewProductFilter(event.target.value)}
                     className="w-full rounded-xl border border-stone-800 bg-stone-900 px-3 py-2 text-xs font-bold text-stone-200 focus:border-amber-500 focus:outline-none"
                   >
-                    <option value="all">All products</option>
+                    <option value="all">{t('admin.allProducts')}</option>
                     {menuItems.map((item) => (
                       <option key={item.id} value={item.id}>{item.name}</option>
                     ))}
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="block text-[10px] font-black uppercase tracking-wide text-stone-500">Rating</span>
+                  <span className="block text-[10px] font-black uppercase tracking-wide text-stone-500">{t('admin.rating')}</span>
                   <select
                     value={reviewRatingFilter}
                     onChange={(event) => setReviewRatingFilter(event.target.value)}
                     className="w-full rounded-xl border border-stone-800 bg-stone-900 px-3 py-2 text-xs font-bold text-stone-200 focus:border-amber-500 focus:outline-none"
                   >
-                    <option value="all">All ratings</option>
+                    <option value="all">{t('admin.allRatings')}</option>
                     {[5, 4, 3, 2, 1].map((rating) => (
                       <option key={rating} value={rating}>{rating} stars</option>
                     ))}
@@ -1829,7 +1831,7 @@ export default function AdminPanel({
                 {reviewsLoading && (
                   <div className="text-center py-16 bg-stone-950 rounded-3xl border border-stone-800">
                     <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-amber-500 motion-reduce:animate-none" />
-                    <p className="text-stone-400 text-sm">Loading reviews...</p>
+                    <p className="text-stone-400 text-sm">{t('admin.loadingReviews')}</p>
                   </div>
                 )}
 
@@ -1887,7 +1889,7 @@ export default function AdminPanel({
                           <span>დასტური</span>
                         </button>
                       ) : (
-                        <span className="text-xs text-green-500 font-semibold px-2">Approved ✔</span>
+                        <span className="text-xs text-green-500 font-semibold px-2">{t('admin.approved')} ✔</span>
                       )}
 
                       <button

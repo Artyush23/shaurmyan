@@ -1,12 +1,15 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Flame, Star, Sparkles, ArrowRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface HeroProps {
   onScrollToMenu: () => void;
 }
 
 export default function Hero({ onScrollToMenu }: HeroProps) {
+  const { t } = useTranslation();
+
   return (
     <section id="hero" className="relative min-h-[calc(100vh-80px)] overflow-hidden bg-stone-950 flex items-center pt-8 md:pt-0">
       {/* Background patterns */}
@@ -51,7 +54,7 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
             >
               <Flame className="w-4 h-4 text-amber-500 animate-pulse" />
               <span className="text-xs font-bold text-amber-500 tracking-wider uppercase font-mono">
-                🔥 თბილისის ლეგენდარული გემო
+                {t('hero.eyebrow')}
               </span>
               <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
             </motion.div>
@@ -63,9 +66,9 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
                 transition={{ duration: 0.8, delay: 0.1 }}
                 className="text-4xl sm:text-6xl lg:text-7xl font-black text-white leading-tight tracking-tighter"
               >
-                მხოლოდ <span className="gold-text-gradient bg-clip-text text-transparent">ShaurmYAN</span>
+                {t('hero.headlineBefore')} <span className="gold-text-gradient bg-clip-text text-transparent">ShaurmYAN</span>
                 <br />
-                არა სხვა რამ!
+                {t('hero.headlineAfter')}
               </motion.h1>
 
               <motion.p
@@ -74,7 +77,7 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
                 transition={{ duration: 0.8, delay: 0.3 }}
                 className="text-stone-300 text-base sm:text-lg max-w-xl font-light leading-relaxed font-sans"
               >
-                სადღაც შუაში – ხრაშუნა ოქროსფერ ლავაშსა და ნაზ, ცეცხლზე მოშიშხინე შერჩეულ ხორცს შორის, იბადება ნამდვილი კულინარიული ხელოვნება. დაგემოვნე პრემიუმ ხარისხი!
+                {t('hero.description')}
               </motion.p>
             </div>
 
@@ -87,15 +90,15 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
             >
               <div className="bg-stone-900/80 border border-stone-800/80 p-3 rounded-2xl text-center shadow-xl">
                 <span className="block text-2xl font-bold text-amber-500 font-mono">100%</span>
-                <span className="text-[10px] sm:text-xs text-stone-400 font-medium">ქართული ხორცი</span>
+                <span className="text-[10px] sm:text-xs text-stone-400 font-medium">{t('hero.meat')}</span>
               </div>
               <div className="bg-stone-900/80 border border-stone-800/80 p-3 rounded-2xl text-center shadow-xl">
                 <span className="block text-2xl font-bold text-amber-500 font-mono">24/7</span>
-                <span className="text-[10px] sm:text-xs text-stone-400 font-medium">ცხელი მიწოდება</span>
+                <span className="text-[10px] sm:text-xs text-stone-400 font-medium">{t('hero.delivery')}</span>
               </div>
               <div className="bg-stone-900/80 border border-stone-800/80 p-3 rounded-2xl text-center shadow-xl">
                 <span className="block text-2xl font-bold text-amber-500 font-mono">4.9+</span>
-                <span className="text-[10px] sm:text-xs text-stone-400 font-medium">საშუალო რეიტინგი</span>
+                <span className="text-[10px] sm:text-xs text-stone-400 font-medium">{t('hero.rating')}</span>
               </div>
             </motion.div>
 
@@ -111,7 +114,7 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
                 className="group relative flex items-center justify-center px-8 py-4 bg-gradient-to-r from-amber-500 via-amber-600 to-red-600 text-stone-950 font-black text-base rounded-2xl shadow-2xl shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer overflow-hidden"
               >
                 <span className="relative z-10 flex items-center">
-                  მენიუს ნახვა
+                  {t('hero.cta')}
                   <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1.5 transition-transform" />
                 </span>
                 <span className="absolute inset-0 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -124,7 +127,7 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
                       key={n}
                       className="w-8 h-8 rounded-full border-2 border-stone-950 object-cover"
                       src={`https://images.unsplash.com/photo-${n === 1 ? '1534528741775-53994a69daeb' : n === 2 ? '1507003211169-0a1dd7228f2d' : '1494790108377-be9c29b29330'}?auto=format&fit=crop&q=80&w=150`}
-                      alt="კმაყოფილი მომხმარებელი"
+                      alt={t('hero.happyCustomers')}
                     />
                   ))}
                 </div>
@@ -134,7 +137,7 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
                       <Star key={s} className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                     ))}
                   </div>
-                  <span className="text-[11px] block text-stone-300 font-semibold">%100 კმაყოფილი სტამბა</span>
+                  <span className="text-[11px] block text-stone-300 font-semibold">{t('hero.happyCustomers')}</span>
                 </div>
               </div>
             </motion.div>
@@ -168,7 +171,7 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
               <div className="relative w-full h-full overflow-hidden rounded-2xl bg-stone-950 group">
                 <img
                   src="/goliath-shaurma.png"
-                  alt="Delicious loaded wrapping Shaurma"
+                  alt={t('hero.imageAlt')}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                 />
                 
@@ -176,8 +179,8 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
                 <div className="absolute bottom-4 left-4 right-4 bg-stone-950/90 backdrop-blur-md p-3 rounded-xl border border-stone-800">
                   <div className="flex justify-between items-center">
                     <div>
-                      <span className="text-stone-300 text-[10px] block font-mono">TOP WEEKLY BOMB</span>
-                      <span className="text-white font-black text-sm">Signature „Goliath“</span>
+                      <span className="text-stone-300 text-[10px] block font-mono">{t('hero.weeklyBomb')}</span>
+                      <span className="text-white font-black text-sm">{t('hero.signatureGoliath')}</span>
                     </div>
                     <span className="font-mono text-amber-500 font-bold text-sm">₾15.50</span>
                   </div>
@@ -191,7 +194,7 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
                 className="absolute -top-6 -right-6 bg-amber-500 text-stone-950 px-4 py-2 rounded-2xl text-xs font-black shadow-lg transform rotate-12 flex items-center space-x-1"
               >
                 <Flame className="w-4 h-4 fill-current text-stone-950" />
-                <span>ცხელი და გემრიელი</span>
+                <span>{t('hero.hotAndTasty')}</span>
               </motion.div>
 
               <motion.div
@@ -199,7 +202,7 @@ export default function Hero({ onScrollToMenu }: HeroProps) {
                 transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
                 className="absolute -bottom-4 -left-6 bg-red-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold shadow-lg transform -rotate-6"
               >
-                💯 100% ხარისხი
+                💯 {t('hero.quality')}
               </motion.div>
             </motion.div>
           </div>

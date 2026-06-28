@@ -97,6 +97,7 @@ export default function Navbar({
   }, [activeView, homeItems, isAuthenticated, onChangeView, onOpenAuth, t]);
 
   const changeLanguage = (language: SupportedLanguage) => {
+    localStorage.setItem('i18nextLng', language);
     void i18n.changeLanguage(language);
     setLanguageOpen(false);
   };
@@ -242,7 +243,7 @@ export default function Navbar({
                 onClick={() => setMobileOpen((open) => !open)}
                 className="flex cursor-pointer items-center justify-center rounded-xl border border-stone-800 bg-stone-900 p-3 text-stone-200 transition-colors hover:bg-stone-800 lg:hidden"
                 aria-expanded={mobileOpen}
-                aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+                aria-label={mobileOpen ? t('common.close') : t('navbar.navigation')}
               >
                 {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
@@ -284,7 +285,7 @@ export default function Navbar({
                   type="button"
                   onClick={() => setMobileOpen(false)}
                   className="cursor-pointer rounded-xl border border-stone-800 bg-stone-900 p-2 text-stone-200 hover:bg-stone-800"
-                  aria-label="Close menu"
+                  aria-label={t('common.close')}
                 >
                   <X className="h-5 w-5" />
                 </button>
