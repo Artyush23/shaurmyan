@@ -9,9 +9,6 @@ interface MenuProps {
   reviews: Review[];
   currentUserId: string | null;
   isAuthenticated: boolean;
-  favoriteProductIds?: string[];
-  onRequireAuth: () => void;
-  onToggleFavorite?: (productId: string) => Promise<void>;
   favoriteProductIds: string[];
   onRequireAuth: () => void;
   onToggleFavorite: (productId: string) => Promise<void>;
@@ -203,11 +200,7 @@ export default function Menu({
 
     setFavoriteUpdatingId(item.id);
     try {
-<<<<<<< HEAD
-      await onToggleFavorite?.(item.id);
-=======
       await onToggleFavorite(item.id);
->>>>>>> origin/main
     } finally {
       setFavoriteUpdatingId(null);
     }
@@ -368,11 +361,7 @@ export default function Menu({
                   type="search"
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-<<<<<<< HEAD
                   placeholder={t('menu.discovery.searchPlaceholder')}
-=======
-                  placeholder="Search menu..."
->>>>>>> origin/main
                   className="h-14 w-full rounded-2xl border border-stone-200 bg-stone-50 py-3 pl-14 pr-4 text-sm font-bold text-stone-900 shadow-sm outline-none transition-all placeholder:text-stone-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/10"
                 />
               </label>
@@ -396,20 +385,12 @@ export default function Menu({
                   </span>
                   <span className="min-w-0">
                     <span className="block text-xs font-black uppercase tracking-[0.16em]">
-<<<<<<< HEAD
                       {t('menu.discovery.resultsAndFilters')}
-=======
-                      Results & Filters
->>>>>>> origin/main
                     </span>
                     <span className={`mt-0.5 block text-[10px] font-semibold ${
                       filtersOpen ? 'text-stone-300' : 'text-stone-400'
                     }`}>
-<<<<<<< HEAD
                       {filteredItems.length} {t(filteredItems.length === 1 ? 'menu.discovery.productFound' : 'menu.discovery.productsFound')}
-=======
-                      {filteredItems.length} product{filteredItems.length === 1 ? '' : 's'} found
->>>>>>> origin/main
                     </span>
                   </span>
                 </span>
@@ -435,7 +416,6 @@ export default function Menu({
               >
                 <div className="max-h-[70vh] space-y-4 overflow-y-auto bg-stone-50/80 p-4 sm:max-h-none sm:p-5">
                   <div className="rounded-2xl border border-stone-100 bg-white p-3 shadow-sm">
-<<<<<<< HEAD
                     <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">{t('menu.discovery.sort')}</span>
                     <div className="flex flex-wrap gap-2">
                       {[
@@ -445,17 +425,6 @@ export default function Menu({
                         ['rating-desc', t('menu.discovery.highestRated')],
                         ['review-count-desc', t('menu.discovery.mostReviewed')],
                         ['discounted-first', t('menu.discovery.discountedFirst')],
-=======
-                    <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">Sort</span>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        ['default', 'Default'],
-                        ['price-asc', 'Price low to high'],
-                        ['price-desc', 'Price high to low'],
-                        ['rating-desc', 'Highest rated'],
-                        ['review-count-desc', 'Most reviewed'],
-                        ['discounted-first', 'Discounted first'],
->>>>>>> origin/main
                       ].map(([value, label]) => (
                         <button
                           key={value}
@@ -475,11 +444,7 @@ export default function Menu({
 
                   <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                     <label className="block rounded-2xl border border-stone-100 bg-white p-3 shadow-sm transition-colors focus-within:border-amber-500/60 focus-within:ring-4 focus-within:ring-amber-500/10">
-<<<<<<< HEAD
                       <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">{t('menu.discovery.priceRange')}</span>
-=======
-                      <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">Price range</span>
->>>>>>> origin/main
                       <span className="grid grid-cols-2 gap-2">
                         <input
                           type="number"
@@ -487,11 +452,7 @@ export default function Menu({
                           step="0.5"
                           value={minPrice}
                           onChange={(event) => setMinPrice(event.target.value)}
-<<<<<<< HEAD
                           placeholder={t('menu.discovery.min')}
-=======
-                          placeholder="Min"
->>>>>>> origin/main
                           className="h-11 min-w-0 rounded-xl border border-stone-200 bg-stone-50 px-3 text-xs font-black text-stone-900 outline-none transition-colors placeholder:text-stone-400 focus:border-amber-500 focus:bg-white"
                         />
                         <input
@@ -500,18 +461,13 @@ export default function Menu({
                           step="0.5"
                           value={maxPrice}
                           onChange={(event) => setMaxPrice(event.target.value)}
-<<<<<<< HEAD
                           placeholder={t('menu.discovery.max')}
-=======
-                          placeholder="Max"
->>>>>>> origin/main
                           className="h-11 min-w-0 rounded-xl border border-stone-200 bg-stone-50 px-3 text-xs font-black text-stone-900 outline-none transition-colors placeholder:text-stone-400 focus:border-amber-500 focus:bg-white"
                         />
                       </span>
                     </label>
 
                     <div className="rounded-2xl border border-stone-100 bg-white p-3 shadow-sm">
-<<<<<<< HEAD
                       <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">{t('menu.discovery.rating')}</span>
                       <div className="flex flex-wrap gap-2">
                         {[
@@ -521,17 +477,6 @@ export default function Menu({
                           ['3', t('menu.discovery.starsPlus', { count: 3 })],
                           ['2', t('menu.discovery.starsPlus', { count: 2 })],
                           ['1', t('menu.discovery.starsPlus', { count: 1 })],
-=======
-                      <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">Rating</span>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          ['all', 'Any rating'],
-                          ['5', '5+ stars'],
-                          ['4', '4+ stars'],
-                          ['3', '3+ stars'],
-                          ['2', '2+ stars'],
-                          ['1', '1+ stars'],
->>>>>>> origin/main
                         ].map(([value, label]) => (
                           <button
                             key={value}
@@ -557,40 +502,18 @@ export default function Menu({
                           ? 'border-amber-500 bg-amber-500 text-stone-950 shadow-lg shadow-amber-500/20'
                           : 'border-stone-200 bg-white text-stone-700 hover:border-amber-500/40'
                       }`}>
-<<<<<<< HEAD
                         <input type="checkbox" checked={availableOnly} onChange={(event) => setAvailableOnly(event.target.checked)} className="sr-only" />
                         <Check className={`h-4 w-4 ${availableOnly ? 'opacity-100' : 'opacity-30'}`} />
                         {t('menu.discovery.availableOnly')}
-=======
-                        <input
-                          type="checkbox"
-                          checked={availableOnly}
-                          onChange={(event) => setAvailableOnly(event.target.checked)}
-                          className="sr-only"
-                        />
-                        <Check className={`h-4 w-4 ${availableOnly ? 'opacity-100' : 'opacity-30'}`} />
-                        Available only
->>>>>>> origin/main
                       </label>
                       <label className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl border px-4 py-2 text-xs font-black transition-all ${
                         discountedOnly
                           ? 'border-red-600 bg-red-600 text-white shadow-lg shadow-red-600/15'
                           : 'border-stone-200 bg-white text-stone-700 hover:border-amber-500/40'
                       }`}>
-<<<<<<< HEAD
                         <input type="checkbox" checked={discountedOnly} onChange={(event) => setDiscountedOnly(event.target.checked)} className="sr-only" />
                         <span className="font-mono text-sm">%</span>
                         {t('menu.discovery.discounted')}
-=======
-                        <input
-                          type="checkbox"
-                          checked={discountedOnly}
-                          onChange={(event) => setDiscountedOnly(event.target.checked)}
-                          className="sr-only"
-                        />
-                        <span className="font-mono text-sm">%</span>
-                        Discounted
->>>>>>> origin/main
                       </label>
                     </div>
 
@@ -601,11 +524,7 @@ export default function Menu({
                       className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-stone-200 bg-stone-950 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white shadow-lg shadow-stone-900/10 transition-all hover:bg-amber-500 hover:text-stone-950 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400 disabled:shadow-none sm:min-w-44"
                     >
                       <RotateCcw className="h-4 w-4" />
-<<<<<<< HEAD
                       {t('menu.discovery.clearFilters')}
-=======
-                      Clear filters
->>>>>>> origin/main
                     </button>
                   </div>
                 </div>
@@ -649,13 +568,8 @@ export default function Menu({
                         ? 'border-red-500/20 bg-red-600 text-white'
                         : 'border-white/40 bg-stone-950/70 text-white hover:bg-amber-500 hover:text-stone-950'
                     } disabled:cursor-wait disabled:opacity-70`}
-<<<<<<< HEAD
                     aria-label={isFavorite ? t('menu.card.removeFavorite') : t('menu.card.addFavorite')}
                     title={isAuthenticated ? (isFavorite ? t('menu.card.removeFavorite') : t('menu.card.addFavorite')) : t('menu.card.signInFavorite')}
-=======
-                    aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                    title={isAuthenticated ? (isFavorite ? 'Remove from favorites' : 'Add to favorites') : 'Sign in to favorite'}
->>>>>>> origin/main
                   >
                     <Heart className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
                   </button>
@@ -743,10 +657,7 @@ export default function Menu({
         {filteredItems.length === 0 && (
           <div className="text-center py-12 bg-stone-50 rounded-2xl border border-dashed border-stone-200">
             <ShieldAlert className="w-12 h-12 text-stone-400 mx-auto mb-3" />
-<<<<<<< HEAD
             <p className="text-stone-500 text-sm font-medium">{t('menu.discovery.empty')}</p>
-=======
-            <p className="text-stone-500 text-sm font-medium">No products match your search and filters.</p>
             {hasActiveDiscoveryFilters && (
               <button
                 type="button"
@@ -754,10 +665,9 @@ export default function Menu({
                 className="mt-4 inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-stone-950 px-5 py-3 text-xs font-black text-white transition-colors hover:bg-amber-500 hover:text-stone-950"
               >
                 <RotateCcw className="h-4 w-4" />
-                Clear filters
+                {t('menu.discovery.clearFilters')}
               </button>
             )}
->>>>>>> origin/main
           </div>
         )}
 
