@@ -22,7 +22,8 @@ interface CartProps {
     customerAddress: string,
     paymentMethod: CheckoutPaymentMethod,
     notes?: string
-  ) => Promise<void>;
+  ) => Promise<string>;
+  onOrderPlaced: (orderId: string) => void;
 }
 
 export default function Cart({
@@ -35,6 +36,7 @@ export default function Cart({
   onRemoveItem,
   onClearCart,
   onPlaceOrder,
+  onOrderPlaced,
 }: CartProps) {
   const { t, i18n } = useTranslation();
   // Checkout Form states
@@ -76,9 +78,10 @@ export default function Cart({
 
   const completeOrder = async () => {
     setSubmitError(null);
+    let orderId = '';
 
     try {
-      await onPlaceOrder(
+      orderId = await onPlaceOrder(
         name,
         phone,
         address,
@@ -96,6 +99,7 @@ export default function Cart({
     setIsAwaitingAuth(false);
     setOrderSuccess(true);
     onClearCart();
+    onOrderPlaced(orderId);
 
     setName('');
     setPhone('');

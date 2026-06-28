@@ -42,6 +42,7 @@ export type OrderStatus =
   | 'accepted'
   | 'preparing'
   | 'ready'
+  | 'on_the_way'
   | 'delivered'
   | 'cancelled';
 
@@ -65,7 +66,11 @@ export interface Order {
   totalPrice: number;
   status: OrderStatus;
   createdAt: string;
+  updatedAt?: string | null;
   notes?: string;
+  estimatedMinutesMin?: number | null;
+  estimatedMinutesMax?: number | null;
+  estimatedArrivalTime?: string | null;
 }
 
 export interface Review {
