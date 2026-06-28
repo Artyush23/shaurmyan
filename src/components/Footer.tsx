@@ -1,7 +1,10 @@
 import React from 'react';
 import { Flame, Phone, MapPin, Clock, Heart } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export default function Footer() {
+  const { t } = useTranslation();
+
   return (
     <footer className="bg-stone-950 text-white pt-16 pb-8 border-t border-stone-900 overflow-hidden relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
@@ -20,28 +23,28 @@ export default function Footer() {
               </span>
             </div>
             <p className="text-stone-400 text-xs font-light leading-relaxed font-sans">
-              ლეგენდარული კულინარიული ხელოვნება თბილისის გულში. ხარისხი, რომელიც უცვლელია ყოველდღე.
+              {t('footer.description')}
             </p>
           </div>
 
           {/* Operating hours list */}
           <div className="space-y-4">
             <span className="text-xs font-extrabold text-amber-500 uppercase tracking-widest font-mono block">
-              🕰️ სამუშაო საათები
+              {t('footer.hoursTitle')}
             </span>
             <div className="space-y-2 text-xs text-stone-400 font-sans">
               <div className="flex items-center space-x-2">
                 <Clock className="w-4 h-4 text-amber-500/80" />
-                <span>ორშაბათი - კვირა: 24/7 ყოველდღე</span>
+                <span>{t('footer.hours')}</span>
               </div>
-              <span className="block text-[10px] text-green-500">● ცხელი ხაზი და სამზარეულო მუშაობს შეუჩერებლად</span>
+              <span className="block text-[10px] text-green-500">{t('footer.hotline')}</span>
             </div>
           </div>
 
           {/* Contact details */}
           <div className="space-y-4">
             <span className="text-xs font-extrabold text-amber-500 uppercase tracking-widest font-mono block">
-              📞 კონტაქტი
+              {t('footer.contact')}
             </span>
             <div className="space-y-3 text-xs text-stone-400 font-sans">
               <div className="flex items-center space-x-2">
@@ -50,7 +53,7 @@ export default function Footer() {
               </div>
               <div className="flex items-start space-x-2">
                 <MapPin className="w-4 h-4 text-amber-500/80 flex-shrink-0 mt-0.5" />
-                <span>ილია ჭავჭავაძის გამზ. 24, თბილისი, საქართველო</span>
+                <span>{t('footer.address')}</span>
               </div>
             </div>
           </div>
@@ -58,10 +61,10 @@ export default function Footer() {
           {/* Slogan details */}
           <div className="space-y-4">
             <span className="text-xs font-extrabold text-amber-500 uppercase tracking-widest font-mono block">
-              👑 პრემიუმ გარანტია
+              {t('footer.guarantee')}
             </span>
             <p className="text-stone-400 text-xs font-light font-sans leading-relaxed">
-              ყოველი შაურმა მზადდება 100% ნატურალური ფერმერული ხორცით და საფირმო, გემრიელი ხელნაკეთი სოუსით.
+              {t('footer.guaranteeText')}
             </p>
           </div>
 
@@ -69,11 +72,11 @@ export default function Footer() {
 
         {/* Brand credit copyrights */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-stone-500 text-xs">
-          <span>&copy; {new Date().getFullYear()} ShaurmYAN. ყველა უფლება დაცულია.</span>
+          <span>&copy; {new Date().getFullYear()} ShaurmYAN. {t('footer.rights')}</span>
           <div className="flex items-center space-x-1.5 font-mono text-[10px]">
-            <span>CRAFTED WITH</span>
+            <span>{t('footer.craftedWith')}</span>
             <Heart className="w-3.5 h-3.5 text-red-600 fill-current animate-pulse" />
-            <span>IN TBILISI, GEORGIA</span>
+            <span>{t('footer.inTbilisi')}</span>
           </div>
         </div>
 

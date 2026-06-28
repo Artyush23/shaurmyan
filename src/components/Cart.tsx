@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CartItem } from '../types';
 import { X, Trash2, ShoppingBasket, Truck, CheckCircle2, CreditCard, Banknote } from 'lucide-react';
 import CardPaymentModal from './CardPaymentModal';
+import { useTranslation } from 'react-i18next';
 
 type CheckoutPaymentMethod = 'card_online' | 'cash_on_delivery';
 
@@ -35,6 +36,7 @@ export default function Cart({
   onClearCart,
   onPlaceOrder,
 }: CartProps) {
+  const { t, i18n } = useTranslation();
   // Checkout Form states
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -68,6 +70,9 @@ export default function Cart({
     }
     return trimmedNotes || paymentNote;
   };
+  const currentLanguage = (i18n.resolvedLanguage || i18n.language || 'ka').split('-')[0];
+  const getCartItemName = (item: CartItem) =>
+    currentLanguage === 'en' && item.menuItem.nameEn ? item.menuItem.nameEn : item.menuItem.name;
 
   const completeOrder = async () => {
     setSubmitError(null);
@@ -81,7 +86,7 @@ export default function Cart({
         buildOrderNotes()
       );
     } catch {
-      setSubmitError('შეკვეთის გაგზავნა ვერ მოხერხდა. სცადეთ ხელახლა.');
+      setSubmitError(t('cart.submitError'));
       setIsSubmitting(false);
       return;
     }
@@ -118,7 +123,7 @@ export default function Cart({
     if (!name.trim() || !phone.trim() || !address.trim()) return;
 
     if (!isAuthenticated) {
-      setSubmitError('ონლაინ შეკვეთის გასაგრძელებლად ჯერ შედით ან დარეგისტრირდით.');
+      setSubmitError(t('cart.authRequired'));
       setIsAwaitingAuth(true);
       onRequireAuth();
       return;
@@ -167,7 +172,7 @@ export default function Cart({
               <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50">
                 <div className="flex items-center space-x-2">
                   <ShoppingBasket className="w-6 h-6 text-amber-500" />
-                  <span className="text-xl font-black text-stone-900 leading-none">შენი კალათა</span>
+                  <span className="text-xl font-black text-stone-900 leading-none">{t('cart.title')}</span>
                 </div>
                 <button
                   onClick={onClose}
@@ -188,11 +193,11 @@ export default function Cart({
                   >
                     <CheckCircle2 className="w-12 h-12 stroke-[2.5]" />
                   </motion.div>
-                  <h3 className="text-2xl font-black text-stone-950">შეკვეთა მიღებულია!</h3>
+                  <h3 className="text-2xl font-black text-stone-950">{t('cart.successTitle')}</h3>
                   <p className="text-stone-600 font-medium text-xs sm:text-sm max-w-xs leading-relaxed font-sans mt-1">
-                    თქვენი შეკვეთა წარმატებით დარეგისტრირდა. ShaurmYAN-ის კურიერი უკვე ამზადებს ჩანთას და მალე კართან იქნება!
+                    {t('cart.successBody')}
                   </p>
-                  <span className="text-[10px] text-stone-400 font-mono block uppercase tracking-wider pt-6">ეს ფანჯარა მალე დაიხურება</span>
+                  <span className="text-[10px] text-stone-400 font-mono block uppercase tracking-wider pt-6">{t('cart.autoClose')}</span>
                 </div>
               ) : (
                 <>
@@ -201,9 +206,9 @@ export default function Cart({
                     {cartItems.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-center space-y-4 text-stone-400">
                         <ShoppingBasket className="w-16 h-16 stroke-[1.2] text-stone-300" />
-                        <span className="text-sm font-semibold text-stone-500">კალათა ცარიელია</span>
+                        <span className="text-sm font-semibold text-stone-500">{t('cart.empty')}</span>
                         <p className="text-xs max-w-xs font-light font-sans text-stone-400 leading-relaxed">
-                          მენიუდან დაამატეთ აირჩიეთ სასურველი შაურმა ან გამაგრილებელი სასმელი შესაკვეთად.
+                          {t('cart.emptyDescription')}
                         </p>
                       </div>
                     ) : (
@@ -214,11 +219,11 @@ export default function Cart({
                         >
                           <div className="flex-1 text-left leading-tight space-y-1.5">
                             <span className="block text-xs font-extrabold text-stone-900 pr-2">
-                              {item.menuItem.name}
+                              {getCartItemName(item)}
                             </span>
                             
                             <span className="inline-block text-[10px] bg-stone-200/80 px-2 py-0.5 rounded text-stone-600 font-semibold uppercase tracking-wider">
-                              ზომა: {item.selectedSize.split('\n')[0]}
+                              {t('cart.size')}: {item.selectedSize.split('\n')[0]}
                             </span>
 
                             {item.addedCustomizations.length > 0 && (
@@ -241,7 +246,7 @@ export default function Cart({
                               </span>
                               {item.quantity > 1 && (
                                 <span className="font-mono text-[10px] text-stone-400 ml-1.5">
-                                  (₾{item.selectedPrice.toFixed(2)} თითო)
+                                  (₾{item.selectedPrice.toFixed(2)} {t('cart.each')})
                                 </span>
                               )}
                             </div>
@@ -251,7 +256,7 @@ export default function Cart({
                             <button
                               onClick={() => onRemoveItem(item.id)}
                               className="p-1 hover:bg-red-50 hover:text-red-500 text-stone-400 rounded transition-colors cursor-pointer"
-                              title="ამოშლა"
+                              title={t('cart.remove')}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -285,17 +290,17 @@ export default function Cart({
                       {/* Subtotals Panel */}
                       <div className="p-6 space-y-1.5 text-xs text-stone-600 border-b border-stone-150">
                         <div className="flex justify-between">
-                          <span>პროდუქტები</span>
+                          <span>{t('cart.products')}</span>
                           <span className="font-mono">₾{itemsTotal.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="flex items-center">
                             <Truck className="w-3.5 h-3.5 mr-1 text-stone-450" />
-                            მიწოდების საფასური
+                            {t('cart.deliveryFee')}
                           </span>
                           <span className="font-mono">
                             {deliveryFee === 0 ? (
-                              <span className="text-green-650 font-bold">უფასო</span>
+                              <span className="text-green-650 font-bold">{t('common.free')}</span>
                             ) : (
                               `₾${deliveryFee.toFixed(2)}`
                             )}
@@ -303,11 +308,11 @@ export default function Cart({
                         </div>
                         {deliveryFee > 0 && (
                           <span className="text-[10px] text-amber-600 font-medium block leading-tight font-sans">
-                            💡 უფასო მიწოდებისთვის დაამატეთ ₾{(30 - itemsTotal).toFixed(2)}-ის პროდუქტი
+                            {t('cart.addForFreeDelivery', { amount: (30 - itemsTotal).toFixed(2) })}
                           </span>
                         )}
                         <div className="flex justify-between text-base font-black text-stone-950 pt-2 border-t border-dashed border-stone-200">
-                          <span>სულ გადასახდელი</span>
+                          <span>{t('cart.total')}</span>
                           <span className="font-mono text-red-650">₾{grandTotal.toFixed(2)}</span>
                         </div>
                       </div>
@@ -315,7 +320,7 @@ export default function Cart({
                       {/* Checkout Information Form */}
                       <form onSubmit={handleSubmitOrder} className="p-6 space-y-4">
                         <span className="block text-xs font-black font-mono tracking-wider text-stone-400 uppercase tracking-widest mb-1">
-                          📋 მიწოდების დეტალები
+                          📋 {t('cart.deliveryDetails')}
                         </span>
 
                         {/* Customer Name */}
@@ -325,7 +330,7 @@ export default function Cart({
                             required
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="სახელი და გვარი"
+                            placeholder={t('cart.fullName')}
                             className="w-full bg-white border border-stone-250 rounded-xl py-2.5 px-3.5 text-xs font-medium text-stone-900 placeholder-stone-400 focus:outline-none focus:border-amber-500 transition-colors"
                           />
                         </div>
@@ -337,7 +342,7 @@ export default function Cart({
                             required
                             value={phone}
                             onChange={(e) => setPhone(e.target.value)}
-                            placeholder="ტელეფონის ნომერი (მაგ: 599 45 61 23)"
+                            placeholder={t('cart.phone')}
                             className="w-full bg-white border border-stone-250 rounded-xl py-2.5 px-3.5 text-xs font-medium text-stone-900 placeholder-stone-400 focus:outline-none focus:border-amber-500 transition-colors"
                           />
                         </div>
@@ -349,7 +354,7 @@ export default function Cart({
                             required
                             value={address}
                             onChange={(e) => setAddress(e.target.value)}
-                            placeholder="მიწოდების ზუსტი მისამართი"
+                            placeholder={t('cart.address')}
                             className="w-full bg-white border border-stone-250 rounded-xl py-2.5 px-3.5 text-xs font-medium text-stone-900 placeholder-stone-400 focus:outline-none focus:border-amber-500 transition-colors"
                           />
                         </div>
@@ -360,36 +365,36 @@ export default function Cart({
                             type="text"
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
-                            placeholder="შენიშვნა კურიერს (არასავალდებულო)"
+                            placeholder={t('cart.notes')}
                             className="w-full bg-white border border-stone-250 rounded-xl py-2.5 px-3.5 text-xs font-medium text-stone-900 placeholder-stone-400 focus:outline-none focus:border-amber-500 transition-colors"
                           />
                         </div>
 
                         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left">
                           <span className="block text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400">
-                            გადახდის მეთოდი
+                            {t('cart.paymentMethod')}
                           </span>
                           <div className="mt-3 grid grid-cols-1 gap-2">
                             <PaymentOption
                               active={paymentMethod === 'card_online'}
                               icon={<CreditCard className="h-4 w-4" />}
-                              title="Online Card Payment"
-                              description="Secure card checkout before delivery."
+                              title={t('cart.onlineCardTitle')}
+                              description={t('cart.onlineCardDescription')}
                               onClick={() => setPaymentMethod('card_online')}
                             />
                             {isAuthenticated && (
                               <PaymentOption
                                 active={paymentMethod === 'cash_on_delivery'}
                                 icon={<Banknote className="h-4 w-4" />}
-                                title="ნაღდი ფულით გადახდა"
-                                description="Cash payment directly with the courier."
+                                title={t('cart.cashTitle')}
+                                description={t('cart.cashDescription')}
                                 onClick={() => setPaymentMethod('cash_on_delivery')}
                               />
                             )}
                           </div>
                           {!isAuthenticated && (
                             <p className="mt-3 text-[11px] leading-5 text-amber-100/80">
-                              Sign in to unlock courier cash payment. Guests continue through secure account checkout.
+                              {t('cart.signInCash')}
                             </p>
                           )}
                         </div>
@@ -406,10 +411,10 @@ export default function Cart({
                           className="w-full py-3.5 bg-stone-950 hover:bg-amber-500 hover:text-stone-950 text-white font-extrabold text-sm sm:text-base rounded-2xl shadow-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center space-x-1 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
                         >
                           {isSubmitting ? (
-                            <span className="animate-pulse">იგზავნება... ⏳</span>
+                            <span className="animate-pulse">{t('cart.submitting')} ⏳</span>
                           ) : (
                             <>
-                              <span>შეკვეთის გაფორმება 🚀</span>
+                              <span>{t('cart.checkout')} 🚀</span>
                             </>
                           )}
                         </button>

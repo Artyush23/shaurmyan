@@ -24,6 +24,7 @@ import { useAuth } from '../hooks/useAuth';
 import { clearSavedCard, getSavedCard, type SavedCard } from '../utils/cardPayment';
 import type { Notification, Order } from '../types';
 import { getOrderStatusClass, getOrderStatusLabel, normalizeOrderStatus } from '../utils/orders';
+import { useTranslation } from 'react-i18next';
 
 function mapProfileOrder(docId: string, data: Record<string, unknown>): Order {
   const createdAtRaw = data.createdAt;
@@ -112,6 +113,7 @@ export default function UserProfile({
   onOpenAdmin,
   onOpenBanking,
 }: UserProfileProps) {
+  const { t } = useTranslation();
   const { user, profile, isAdmin, signOut } = useAuth();
   const [savedCard, setSavedCard] = useState<SavedCard | null>(() => getSavedCard());
   const [orders, setOrders] = useState<Order[]>([]);
@@ -174,7 +176,7 @@ export default function UserProfile({
       },
       (error) => {
         console.error('Failed to load profile orders:', error);
-        setOrdersError('Could not load recent orders right now.');
+        setOrdersError(t('profile.ordersError'));
         setOrdersLoading(false);
       }
     );
@@ -212,7 +214,7 @@ export default function UserProfile({
       },
       (error) => {
         console.error('Failed to load profile notifications:', error);
-        setNotificationsError('Could not load notifications right now.');
+        setNotificationsError(t('profile.notificationsError'));
         setNotificationsLoading(false);
       }
     );
@@ -258,7 +260,7 @@ export default function UserProfile({
     event.preventDefault();
 
     if (!user) {
-      setProfileError('Please sign in again before updating your profile.');
+      setProfileError(t('app.signInRequired'));
       return;
     }
 
@@ -272,7 +274,7 @@ export default function UserProfile({
         lastName,
         phoneNumber,
       });
-      setProfileSuccess('Profile updated successfully.');
+      setProfileSuccess(t('profile.profileUpdated'));
       setIsEditing(false);
     } catch (error) {
       const code = (error as { code?: string })?.code ?? '';
@@ -303,7 +305,7 @@ export default function UserProfile({
         <header className="border-b border-stone-800 pb-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em] text-amber-500">
             <UserRound className="h-3.5 w-3.5" />
-            Profile
+            {t('profile.title')}
           </div>
           <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -311,16 +313,16 @@ export default function UserProfile({
                 პროფილი / User Profile
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-400 sm:text-base">
-                Manage your ShaurmYAN account, saved cards, and recent online-only checkout activity.
+                {t('profile.description')}
               </p>
             </div>
             <div className="rounded-2xl border border-stone-800 bg-stone-900 px-4 py-3">
               <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-stone-500">
-                Account status
+                {t('profile.accountStatus')}
               </p>
               <p className="mt-1 flex items-center gap-2 text-sm font-black text-amber-500">
                 <ShieldCheck className="h-4 w-4" />
-                {isAdmin ? 'Admin account' : 'Verified customer'}
+                {isAdmin ? t('profile.adminAccount') : t('profile.verifiedCustomer')}
               </p>
             </div>
           </div>
@@ -335,10 +337,10 @@ export default function UserProfile({
               </div>
               <div className="min-w-0">
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-amber-500">
-                  Personal Information
+                  {t('profile.personalInfo')}
                 </p>
                 <h2 className="mt-1 truncate text-xl font-black text-white">
-                  {profile?.displayName || user?.displayName || 'ShaurmYAN Guest'}
+                  {profile?.displayName || user?.displayName || t('profile.guest')}
                 </h2>
               </div>
               </div>
@@ -352,7 +354,7 @@ export default function UserProfile({
                 className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-amber-400 transition-colors hover:bg-amber-500/15"
               >
                 {isEditing ? <X className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}
-                {isEditing ? 'Cancel' : 'Edit Profile'}
+                {isEditing ? t('profile.cancel') : t('profile.edit')}
               </button>
             </div>
 
@@ -360,7 +362,7 @@ export default function UserProfile({
               <form onSubmit={handleSaveProfile} className="mt-6 space-y-4">
                 <ProfileInput
                   icon={<UserRound className="h-4 w-4" />}
-                  label="First Name"
+                  label={t('profile.firstName')}
                   value={firstName}
                   onChange={setFirstName}
                   autoComplete="given-name"
@@ -368,14 +370,14 @@ export default function UserProfile({
                 />
                 <ProfileInput
                   icon={<UserRound className="h-4 w-4" />}
-                  label="Last Name"
+                  label={t('profile.lastName')}
                   value={lastName}
                   onChange={setLastName}
                   autoComplete="family-name"
                 />
                 <ProfileInput
                   icon={<Phone className="h-4 w-4" />}
-                  label="Phone Number"
+                  label={t('profile.phoneNumber')}
                   value={phoneNumber}
                   onChange={setPhoneNumber}
                   type="tel"
@@ -395,7 +397,7 @@ export default function UserProfile({
                     ) : (
                       <Save className="h-4 w-4" />
                     )}
-                    შენახვა / Save Changes
+                    {t('profile.save')}
                   </button>
                   <button
                     type="button"
@@ -404,7 +406,7 @@ export default function UserProfile({
                     className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-stone-700 bg-stone-900 px-4 py-3 text-sm font-bold text-stone-200 transition-colors hover:border-stone-600 hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <X className="h-4 w-4" />
-                    Cancel
+                    {t('profile.cancel')}
                   </button>
                 </div>
               </form>
@@ -412,23 +414,23 @@ export default function UserProfile({
               <div className="mt-6 space-y-3">
                 <InfoRow
                   icon={<UserRound className="h-4 w-4" />}
-                  label="Name"
-                  value={profile?.displayName || user?.displayName || 'Not added yet'}
+                  label={t('profile.name')}
+                  value={profile?.displayName || user?.displayName || t('profile.notAdded')}
                 />
                 <InfoRow
                   icon={<Mail className="h-4 w-4" />}
-                  label="Email"
-                  value={profile?.email || user?.email || 'No email available'}
+                  label={t('profile.email')}
+                  value={profile?.email || user?.email || t('profile.noEmail')}
                 />
                 <InfoRow
                   icon={<Phone className="h-4 w-4" />}
-                  label="Phone"
-                  value={profile?.phoneNumber || 'Not added yet'}
+                  label={t('profile.phone')}
+                  value={profile?.phoneNumber || t('profile.notAdded')}
                 />
                 <InfoRow
                   icon={<ShieldCheck className="h-4 w-4" />}
-                  label="Role"
-                  value={isAdmin ? 'Admin' : 'Customer'}
+                  label={t('profile.role')}
+                  value={isAdmin ? t('navbar.adminShort') : t('profile.customer')}
                 />
               </div>
             )}
@@ -451,7 +453,7 @@ export default function UserProfile({
               className="mt-5 inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm font-black text-red-200 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-              გამოსვლა / Sign Out
+              {t('profile.signOut')}
             </button>
           </section>
 
@@ -459,9 +461,9 @@ export default function UserProfile({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-amber-500">
-                  შენახული ბარათები
+                  {t('profile.savedCards')}
                 </p>
-                <h2 className="mt-1 text-xl font-black text-white">Saved Payment Cards</h2>
+                <h2 className="mt-1 text-xl font-black text-white">{t('profile.savedPaymentCards')}</h2>
               </div>
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-500">
                 <WalletCards className="h-5 w-5" />
@@ -496,9 +498,9 @@ export default function UserProfile({
               </div>
             ) : (
               <div className="mt-5 rounded-2xl border border-dashed border-stone-700 bg-stone-900/70 p-4">
-                <p className="text-sm font-semibold text-stone-200">No saved card yet.</p>
+                <p className="text-sm font-semibold text-stone-200">{t('profile.noSavedCard')}</p>
                 <p className="mt-2 text-xs leading-5 text-stone-400">
-                  Save a card during online payment to speed up future ShaurmYAN checkouts.
+                  {t('profile.noSavedCardDescription')}
                 </p>
               </div>
             )}
@@ -508,9 +510,9 @@ export default function UserProfile({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-amber-500">
-                  Recent Orders
+                  {t('profile.recentOrders')}
                 </p>
-                <h2 className="mt-1 text-xl font-black text-white">Order History</h2>
+                <h2 className="mt-1 text-xl font-black text-white">{t('profile.orderHistory')}</h2>
               </div>
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-500">
                 <ShoppingBag className="h-5 w-5" />
@@ -520,7 +522,7 @@ export default function UserProfile({
             <div className="mt-5 space-y-3">
               {ordersLoading ? (
                 <p className="rounded-2xl border border-stone-800 bg-stone-900 p-4 text-sm text-stone-400">
-                  Loading recent orders...
+                  {t('profile.loadingOrders')}
                 </p>
               ) : ordersError ? (
                 <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
@@ -533,7 +535,7 @@ export default function UserProfile({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-black text-white">{order.id}</p>
                         <p className="mt-1 text-xs text-stone-400">
-                          {order.items.length} item{order.items.length === 1 ? '' : 's'} ·{' '}
+                          {order.items.length} {t(order.items.length === 1 ? 'cart.products' : 'cart.products')} ·{' '}
                           {formatDate(order.createdAt)}
                         </p>
                       </div>
@@ -548,7 +550,7 @@ export default function UserProfile({
                 ))
               ) : (
                 <p className="rounded-2xl border border-dashed border-stone-700 bg-stone-900/70 p-4 text-sm text-stone-400">
-                  Your completed online orders will appear here.
+                  {t('profile.noOrders')}
                 </p>
               )}
             </div>
@@ -558,11 +560,11 @@ export default function UserProfile({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-amber-500">
-                  Notifications
+                  {t('profile.notifications')}
                 </p>
-                <h2 className="mt-1 text-xl font-black text-white">Order Updates</h2>
+                <h2 className="mt-1 text-xl font-black text-white">{t('profile.orderUpdates')}</h2>
                 <p className="mt-1 text-xs text-stone-500">
-                  {notifications.filter((notification) => !notification.read).length} unread
+                  {t('profile.unread', { count: notifications.filter((notification) => !notification.read).length })}
                 </p>
               </div>
               <div className="relative rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-500">
@@ -578,7 +580,7 @@ export default function UserProfile({
             <div className="mt-5 space-y-3">
               {notificationsLoading ? (
                 <p className="rounded-2xl border border-stone-800 bg-stone-900 p-4 text-sm text-stone-400">
-                  Loading notifications...
+                  {t('profile.loadingNotifications')}
                 </p>
               ) : notificationsError ? (
                 <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
@@ -606,7 +608,7 @@ export default function UserProfile({
                       </div>
                       {!notification.read && (
                         <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-black uppercase text-white">
-                          New
+                          {t('menu.card.new')}
                         </span>
                       )}
                     </div>
@@ -614,7 +616,7 @@ export default function UserProfile({
                 ))
               ) : (
                 <p className="rounded-2xl border border-dashed border-stone-700 bg-stone-900/70 p-4 text-sm text-stone-400">
-                  Order status updates will appear here.
+                  {t('profile.noNotifications')}
                 </p>
               )}
             </div>

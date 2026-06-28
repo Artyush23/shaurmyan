@@ -14,6 +14,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useTranslation } from 'react-i18next';
 
 export interface BankingAccount {
   id: string;
@@ -149,6 +150,7 @@ export default function BankingDashboard({
   onDownloadStatement,
   onRefresh,
 }: BankingDashboardProps) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<BankingAccount[]>([]);
   const [transactions, setTransactions] = useState<BankingTransaction[]>([]);
@@ -313,15 +315,15 @@ export default function BankingDashboard({
         {loading ? (
           <div className="mt-6 flex min-h-80 flex-col items-center justify-center rounded-3xl border border-stone-800 bg-stone-950/85 text-center">
             <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
-            <p className="mt-4 text-sm font-bold text-white">Loading secure banking data...</p>
-            <p className="mt-1 text-xs text-stone-500">Verifying your Firebase session and bank connections.</p>
+            <p className="mt-4 text-sm font-bold text-white">{t('banking.loading')}</p>
+            <p className="mt-1 text-xs text-stone-500">{t('banking.verifying')}</p>
           </div>
         ) : (
           <>
             {error && (
               <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-black text-red-200">Banking connection unavailable</p>
+                  <p className="text-sm font-black text-red-200">{t('banking.unavailable')}</p>
                   <p className="mt-1 break-words text-xs leading-5 text-red-200/75">{error}</p>
                 </div>
                 <button
@@ -371,7 +373,7 @@ export default function BankingDashboard({
                   <div className="rounded-2xl border border-stone-800 bg-stone-900/60 p-3 sm:p-4">
                     <div className="mb-4 flex items-end justify-between gap-3">
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-stone-500">Total loaded spend</p>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-stone-500">{t('banking.totalSpend')}</p>
                         <p className="mt-1 text-2xl font-black text-white">{formatMoney(totalDebits)}</p>
                       </div>
                       <p className="text-right text-[10px] text-stone-500">
