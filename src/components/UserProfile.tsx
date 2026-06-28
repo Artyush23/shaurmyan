@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { collection, doc, onSnapshot, query, Timestamp, updateDoc, where } from 'firebase/firestore';
 import {
   ArrowUpRight,
   Bell,
+  CheckCircle2,
+  Clock,
   CreditCard,
   Edit3,
   Heart,
@@ -10,21 +13,32 @@ import {
   Mail,
   Loader2,
   LogOut,
+  MapPin,
+  Navigation,
   Phone,
   Save,
   Settings,
   ShieldCheck,
   ShoppingBag,
+  Route,
   Trash2,
   UserRound,
   WalletCards,
   X,
+  XCircle,
 } from 'lucide-react';
 import { db, getAuthErrorMessage, updateUserProfile } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { clearSavedCard, getSavedCard, type SavedCard } from '../utils/cardPayment';
 import type { MenuItem, Notification, Order } from '../types';
-import { getOrderStatusClass, getOrderStatusLabel, normalizeOrderStatus } from '../utils/orders';
+import {
+  ACTIVE_ORDER_STATUSES,
+  ORDER_PROGRESS_STATUSES,
+  getEstimatedDeliveryWindow,
+  getOrderStatusClass,
+  getOrderStatusLabel,
+  normalizeOrderStatus,
+} from '../utils/orders';
 import { useTranslation } from 'react-i18next';
 
 function mapProfileOrder(docId: string, data: Record<string, unknown>): Order {
@@ -51,6 +65,9 @@ function mapProfileOrder(docId: string, data: Record<string, unknown>): Order {
     status: normalizeOrderStatus(data.status),
     createdAt,
     notes: data.notes ? String(data.notes) : undefined,
+    estimatedMinutesMin: typeof data.estimatedMinutesMin === 'number' ? data.estimatedMinutesMin : null,
+    estimatedMinutesMax: typeof data.estimatedMinutesMax === 'number' ? data.estimatedMinutesMax : null,
+    estimatedArrivalTime: typeof data.estimatedArrivalTime === 'string' ? data.estimatedArrivalTime : null,
   };
 }
 
@@ -135,6 +152,7 @@ export default function UserProfile({
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     setSavedCard(getSavedCard());
@@ -236,6 +254,11 @@ export default function UserProfile({
       .map((part) => part[0]?.toUpperCase())
       .join('');
   }, [profile?.displayName, user?.displayName, user?.email]);
+
+  const activeOrderIds = useMemo(
+    () => new Set(orders.filter((order) => ACTIVE_ORDER_STATUSES.includes(order.status)).map((order) => order.id)),
+    [orders]
+  );
 
   const handleClearCard = () => {
     clearSavedCard();
@@ -589,25 +612,60 @@ export default function UserProfile({
                   {ordersError}
                 </p>
               ) : orders.length > 0 ? (
-                orders.map((order) => (
-                  <div key={order.id} className="rounded-2xl border border-stone-800 bg-stone-900 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-white">{order.id}</p>
-                        <p className="mt-1 text-xs text-stone-400">
-                          {order.items.length} {t(order.items.length === 1 ? 'cart.products' : 'cart.products')} ·{' '}
-                          {formatDate(order.createdAt)}
-                        </p>
+                orders.map((order) => {
+                  const isTracking = trackingOrderId === order.id;
+                  const canTrack = activeOrderIds.has(order.id);
+
+                  return (
+                    <div key={order.id} className="overflow-hidden rounded-2xl border border-stone-800 bg-stone-900">
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-white">{order.id}</p>
+                            <p className="mt-1 text-xs text-stone-400">
+                              {order.items.length} {t(order.items.length === 1 ? 'cart.products' : 'cart.products')} ·{' '}
+                              {formatDate(order.createdAt)}
+                            </p>
+                          </div>
+                          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${getOrderStatusClass(order.status)}`}>
+                            {getOrderStatusLabel(order.status)}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-sm font-black text-amber-500">
+                            {formatMoney(order.totalPrice)}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setTrackingOrderId(isTracking ? null : order.id)}
+                            className={`inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+                              canTrack
+                                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 shadow-lg shadow-amber-500/15 hover:from-amber-400 hover:to-amber-500'
+                                : 'border border-stone-700 bg-stone-950 text-stone-300 hover:border-amber-500/30'
+                            }`}
+                          >
+                            <Route className="h-3.5 w-3.5" />
+                            {canTrack ? 'Track Order' : 'View Status'}
+                          </button>
+                        </div>
                       </div>
-                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${getOrderStatusClass(order.status)}`}>
-                        {getOrderStatusLabel(order.status)}
-                      </span>
+
+                      <AnimatePresence initial={false}>
+                        {isTracking && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.25, ease: 'easeOut' }}
+                            className="overflow-hidden border-t border-stone-800"
+                          >
+                            <OrderTrackingPanel order={order} />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                    <p className="mt-3 text-sm font-black text-amber-500">
-                      {formatMoney(order.totalPrice)}
-                    </p>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="rounded-2xl border border-dashed border-stone-700 bg-stone-900/70 p-4 text-sm text-stone-400">
                   {t('profile.noOrders')}
@@ -722,6 +780,153 @@ export default function UserProfile({
         )}
       </div>
     </section>
+  );
+}
+
+function OrderTrackingPanel({ order }: { order: Order }) {
+  const currentIndex = ORDER_PROGRESS_STATUSES.indexOf(order.status);
+  const isCancelled = order.status === 'cancelled';
+  const isDelivered = order.status === 'delivered';
+  const estimate = order.estimatedMinutesMin !== undefined && order.estimatedMinutesMax !== undefined
+    ? {
+        min: order.estimatedMinutesMin,
+        max: order.estimatedMinutesMax,
+        label: order.estimatedMinutesMin === null || order.estimatedMinutesMax === null
+          ? getEstimatedDeliveryWindow(order.status).label
+          : `${order.estimatedMinutesMin}-${order.estimatedMinutesMax} min`,
+      }
+    : getEstimatedDeliveryWindow(order.status);
+  const arrivalLabel = order.estimatedArrivalTime
+    ? formatDate(order.estimatedArrivalTime)
+    : null;
+
+  return (
+    <div className="bg-stone-950/80 p-4 sm:p-5">
+      <div className={`rounded-2xl border p-4 ${
+        isCancelled
+          ? 'border-red-500/20 bg-red-500/10'
+          : isDelivered
+            ? 'border-green-500/20 bg-green-500/10'
+            : 'border-amber-500/20 bg-amber-500/10'
+      }`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+              isCancelled
+                ? 'bg-red-500/15 text-red-300'
+                : isDelivered
+                  ? 'bg-green-500/15 text-green-300'
+                  : 'bg-amber-500 text-stone-950'
+            }`}>
+              {isCancelled ? <XCircle className="h-5 w-5" /> : isDelivered ? <CheckCircle2 className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+            </span>
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-stone-400">Estimated delivery</p>
+              <p className="mt-1 text-lg font-black text-white">{estimate.label}</p>
+            </div>
+          </div>
+          {arrivalLabel && (
+            <div className="rounded-xl border border-stone-800 bg-stone-950/70 px-3 py-2 text-xs font-bold text-stone-300">
+              ETA {arrivalLabel}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <TrackingInfo icon={<MapPin className="h-4 w-4" />} label="Address" value={order.customerAddress || order.address || 'Not provided'} />
+        <TrackingInfo icon={<Phone className="h-4 w-4" />} label="Phone" value={order.customerPhone || order.phone || 'Not provided'} />
+      </div>
+
+      <div className="mt-5 overflow-hidden rounded-2xl border border-stone-800 bg-stone-900/70">
+        <div className="divide-y divide-stone-800">
+          {order.items.map((item, index) => (
+            <div key={`${item.name}-${index}`} className="flex items-start justify-between gap-3 p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-black text-white">
+                  {item.quantity}x {item.name}
+                </p>
+                <p className="mt-1 text-xs text-stone-400">
+                  {item.size}{item.extras.length > 0 ? ` · + ${item.extras.join(', ')}` : ''}
+                </p>
+              </div>
+              <p className="shrink-0 font-mono text-sm font-black text-amber-500">
+                {formatMoney(item.price * item.quantity)}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-between border-t border-stone-800 bg-stone-950/60 p-3">
+          <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-stone-500">Total</span>
+          <span className="font-mono text-base font-black text-white">{formatMoney(order.totalPrice)}</span>
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {ORDER_PROGRESS_STATUSES.map((status, index) => {
+          const isComplete = !isCancelled && index < currentIndex;
+          const isCurrent = !isCancelled && index === currentIndex;
+          const isFuture = isCancelled || index > currentIndex;
+
+          return (
+            <div key={status} className="relative flex gap-3">
+              {index < ORDER_PROGRESS_STATUSES.length - 1 && (
+                <span className={`absolute left-5 top-10 h-[calc(100%-0.25rem)] w-px ${
+                  isComplete ? 'bg-amber-500' : 'bg-stone-800'
+                }`} />
+              )}
+              <motion.span
+                layout
+                className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${
+                  isComplete
+                    ? 'border-amber-500 bg-amber-500 text-stone-950'
+                    : isCurrent
+                      ? 'border-red-500 bg-red-600 text-white shadow-lg shadow-red-600/20'
+                      : 'border-stone-800 bg-stone-900 text-stone-500'
+                }`}
+              >
+                {isComplete ? <CheckCircle2 className="h-4 w-4" /> : isCurrent ? <Navigation className="h-4 w-4" /> : <ShoppingBag className="h-4 w-4" />}
+              </motion.span>
+              <div className={`min-w-0 rounded-2xl border p-3 flex-1 ${
+                isCurrent
+                  ? 'border-amber-500/30 bg-amber-500/10'
+                  : 'border-stone-800 bg-stone-900/50'
+              }`}>
+                <p className={`text-sm font-black ${isFuture ? 'text-stone-500' : 'text-white'}`}>
+                  {getOrderStatusLabel(status)}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  {getEstimatedDeliveryWindow(status).label}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {isCancelled && (
+        <p className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-300">
+          This order was cancelled.
+        </p>
+      )}
+      {isDelivered && (
+        <p className="mt-4 rounded-2xl border border-green-500/20 bg-green-500/10 p-3 text-xs font-bold text-green-300">
+          Delivered. Enjoy your meal!
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TrackingInfo({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-stone-800 bg-stone-900/70 p-3">
+      <p className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-stone-500">
+        <span className="text-amber-500">{icon}</span>
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-bold leading-5 text-stone-200">{value}</p>
+    </div>
   );
 }
 

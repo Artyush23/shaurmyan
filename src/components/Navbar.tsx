@@ -8,6 +8,7 @@ import {
   LogIn,
   Menu,
   MessageSquare,
+  Route,
   ShoppingBag,
   UserRound,
   UtensilsCrossed,
@@ -19,6 +20,8 @@ import { supportedLanguages, type SupportedLanguage } from '../i18n';
 interface NavbarProps {
   cartCount: number;
   onOpenCart: () => void;
+  activeOrderCount?: number;
+  onOpenTracking?: () => void;
   activeView: 'client' | 'admin' | 'banking' | 'profile';
   onChangeView: (view: 'client' | 'admin' | 'banking' | 'profile') => void;
   onScrollTo: (elementId: string) => void;
@@ -35,6 +38,8 @@ type NavItem = {
 export default function Navbar({
   cartCount,
   onOpenCart,
+  activeOrderCount = 0,
+  onOpenTracking,
   activeView,
   onChangeView,
   onScrollTo,
@@ -204,25 +209,41 @@ export default function Navbar({
               </div>
 
               {activeView === 'client' && (
-                <motion.button
-                  id="checkout-cart-btn"
-                  onClick={onOpenCart}
-                  whileTap={{ scale: 0.95 }}
-                  className="relative flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-3 font-black text-stone-950 shadow-lg shadow-amber-500/20 transition-all hover:from-amber-400 hover:to-amber-500 sm:px-5 sm:py-2.5"
-                >
-                  <ShoppingBag className="h-5 w-5 sm:mr-2" />
-                  <span className="hidden sm:inline">{t('navbar.cart')}</span>
-                  {cartCount > 0 && (
-                    <motion.span
-                      key={cartCount}
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-stone-900 bg-red-600 px-1.5 text-xs font-bold text-white"
+                <>
+                  {activeOrderCount > 0 && onOpenTracking && (
+                    <motion.button
+                      type="button"
+                      onClick={onOpenTracking}
+                      whileTap={{ scale: 0.95 }}
+                      className="relative hidden min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-400 transition-colors hover:bg-amber-500 hover:text-stone-950 sm:flex"
                     >
-                      {cartCount}
-                    </motion.span>
+                      <Route className="h-4 w-4" />
+                      Track
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] text-white">
+                        {activeOrderCount}
+                      </span>
+                    </motion.button>
                   )}
-                </motion.button>
+                  <motion.button
+                    id="checkout-cart-btn"
+                    onClick={onOpenCart}
+                    whileTap={{ scale: 0.95 }}
+                    className="relative flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-3 font-black text-stone-950 shadow-lg shadow-amber-500/20 transition-all hover:from-amber-400 hover:to-amber-500 sm:px-5 sm:py-2.5"
+                  >
+                    <ShoppingBag className="h-5 w-5 sm:mr-2" />
+                    <span className="hidden sm:inline">{t('navbar.cart')}</span>
+                    {cartCount > 0 && (
+                      <motion.span
+                        key={cartCount}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-stone-900 bg-red-600 px-1.5 text-xs font-bold text-white"
+                      >
+                        {cartCount}
+                      </motion.span>
+                    )}
+                  </motion.button>
+                </>
               )}
 
               <button
@@ -330,18 +351,34 @@ export default function Navbar({
                 </div>
 
                 {activeView === 'client' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileOpen(false);
-                      onOpenCart();
-                    }}
-                    className="mt-3 flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 text-sm font-black text-stone-950"
-                  >
-                    <ShoppingBag className="h-4 w-4" />
-                    {t('navbar.cart')}
-                    <span className="rounded-full bg-stone-950/10 px-2 py-0.5 text-xs">{cartCount}</span>
-                  </button>
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    {activeOrderCount > 0 && onOpenTracking && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileOpen(false);
+                          onOpenTracking();
+                        }}
+                        className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-400"
+                      >
+                        <Route className="h-4 w-4" />
+                        Track Order
+                        <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs text-white">{activeOrderCount}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileOpen(false);
+                        onOpenCart();
+                      }}
+                      className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 text-sm font-black text-stone-950"
+                    >
+                      <ShoppingBag className="h-4 w-4" />
+                      {t('navbar.cart')}
+                      <span className="rounded-full bg-stone-950/10 px-2 py-0.5 text-xs">{cartCount}</span>
+                    </button>
+                  </div>
                 )}
               </div>
             </motion.div>

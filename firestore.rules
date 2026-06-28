@@ -15,9 +15,33 @@ service cloud.firestore {
         'accepted',
         'preparing',
         'ready',
+        'on_the_way',
         'delivered',
         'cancelled'
       ];
+    }
+
+    function isNullableNumber(value) {
+      return value == null || value is number;
+    }
+
+    function isNullableString(value) {
+      return value == null || value is string;
+    }
+
+    function isValidAdminOrderStatusUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'estimatedMinutesMin',
+          'estimatedMinutesMax',
+          'estimatedArrivalTime',
+          'updatedAt',
+        ])
+        && isAllowedOrderStatus(request.resource.data.status)
+        && isNullableNumber(request.resource.data.estimatedMinutesMin)
+        && isNullableNumber(request.resource.data.estimatedMinutesMax)
+        && isNullableString(request.resource.data.estimatedArrivalTime)
+        && request.resource.data.updatedAt is timestamp;
     }
 
     function isValidReviewData(data) {
@@ -80,8 +104,9 @@ service cloud.firestore {
 
       allow read: if isAdmin()
         || (request.auth != null && resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin()
-        && (!('status' in request.resource.data) || isAllowedOrderStatus(request.resource.data.status));
+      allow update: if isAdmin()
+        && isValidAdminOrderStatusUpdate();
+      allow delete: if isAdmin();
     }
 
     match /adminPanel/{docId} {

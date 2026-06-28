@@ -10,11 +10,17 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  Timestamp,
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { MenuItem, CartItem, Order, Review } from './types';
-import { getOrderStatusLabel } from './utils/orders';
+import {
+  ACTIVE_ORDER_STATUSES,
+  buildEstimatedDeliveryFields,
+  getOrderStatusLabel,
+  normalizeOrderStatus,
+} from './utils/orders';
 
 // Component imports
 import Navbar from './components/Navbar';
@@ -29,6 +35,7 @@ import AuthModal from './components/AuthModal';
 import BankingDashboard from './components/BankingDashboard';
 import RequireAdmin from './components/RequireAdmin';
 import UserProfile from './components/UserProfile';
+import OrderTrackingDrawer from './components/OrderTrackingDrawer';
 import { INITIAL_MENU, INITIAL_REVIEWS } from './data/initialData';
 import { useAuth } from './hooks/useAuth';
 import { useTranslation } from 'react-i18next';
@@ -90,6 +97,36 @@ function getSchemaJsonLd() {
   };
 }
 
+function mapAppOrder(docId: string, data: Record<string, unknown>): Order {
+  const createdAtRaw = data.createdAt;
+  let createdAt = new Date().toISOString();
+
+  if (createdAtRaw instanceof Timestamp) {
+    createdAt = createdAtRaw.toDate().toISOString();
+  } else if (typeof createdAtRaw === 'string') {
+    createdAt = createdAtRaw;
+  }
+
+  return {
+    id: docId,
+    userId: String(data.userId ?? ''),
+    customerName: String(data.customerName ?? ''),
+    phone: String(data.phone ?? data.customerPhone ?? ''),
+    address: String(data.address ?? data.customerAddress ?? ''),
+    customerPhone: String(data.customerPhone ?? data.phone ?? ''),
+    customerAddress: String(data.customerAddress ?? data.address ?? ''),
+    paymentMethod: (data.paymentMethod as Order['paymentMethod']) ?? 'card_online',
+    items: (data.items as Order['items']) ?? [],
+    totalPrice: Number(data.totalPrice ?? 0),
+    status: normalizeOrderStatus(data.status),
+    createdAt,
+    notes: data.notes ? String(data.notes) : undefined,
+    estimatedMinutesMin: typeof data.estimatedMinutesMin === 'number' ? data.estimatedMinutesMin : null,
+    estimatedMinutesMax: typeof data.estimatedMinutesMax === 'number' ? data.estimatedMinutesMax : null,
+    estimatedArrivalTime: typeof data.estimatedArrivalTime === 'string' ? data.estimatedArrivalTime : null,
+  };
+}
+
 export default function App() {
   const { t } = useTranslation();
   const { user, profile, loading: authLoading, isAdmin: isAdminUser } = useAuth();
@@ -108,6 +145,10 @@ export default function App() {
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
   const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [trackingDrawerOpen, setTrackingDrawerOpen] = useState(false);
+  const [trackedOrderId, setTrackedOrderId] = useState<string | null>(null);
 
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     const saved = localStorage.getItem('shaurmyan_cart');
@@ -115,7 +156,7 @@ export default function App() {
   });
 
   const pendingCheckoutRef = useRef<{
-    resolve: () => void;
+    resolve: (orderId: string) => void;
     reject: (error: Error) => void;
     args: CheckoutArgs;
   } | null>(null);
@@ -152,6 +193,38 @@ export default function App() {
       (error) => {
         console.error('Failed to load favorites:', error);
         setFavoriteProductIds([]);
+      }
+    );
+
+    return unsubscribe;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setUserOrders([]);
+      setOrdersLoading(false);
+      setTrackingDrawerOpen(false);
+      setTrackedOrderId(null);
+      return;
+    }
+
+    setOrdersLoading(true);
+
+    const ordersQuery = query(collection(db, 'orders'), where('userId', '==', user.uid));
+    const unsubscribe = onSnapshot(
+      ordersQuery,
+      (snapshot) => {
+        const nextOrders = snapshot.docs
+          .map((orderDoc) => mapAppOrder(orderDoc.id, orderDoc.data()))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        setUserOrders(nextOrders);
+        setOrdersLoading(false);
+      },
+      (error) => {
+        console.error('Failed to load live order tracking:', error);
+        setUserOrders([]);
+        setOrdersLoading(false);
       }
     );
 
@@ -407,6 +480,7 @@ export default function App() {
         })),
         totalPrice: itemsTotal + deliveryFee,
         status: 'pending',
+        ...buildEstimatedDeliveryFields('pending'),
         createdAt: serverTimestamp(),
         notes: notes ?? null,
       });
@@ -419,6 +493,7 @@ export default function App() {
         message: `${trimmedName} placed order ${orderId} for ₾${(itemsTotal + deliveryFee).toFixed(2)}.`,
         orderId,
       });
+      return orderId;
     } catch (error) {
       console.error('Failed to place order in Firestore:', error);
       throw error;
@@ -436,8 +511,8 @@ export default function App() {
 
     try {
       const [customerName, customerPhone, customerAddress, paymentMethod, notes] = pending.args;
-      await submitOrderNow(customerName, customerPhone, customerAddress, paymentMethod, notes);
-      pending.resolve();
+      const orderId = await submitOrderNow(customerName, customerPhone, customerAddress, paymentMethod, notes);
+      pending.resolve(orderId);
     } catch (error) {
       pending.reject(error instanceof Error ? error : new Error('Checkout failed.'));
     } finally {
@@ -539,7 +614,7 @@ export default function App() {
     }
 
     if (!user) {
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<string>((resolve, reject) => {
         pendingCheckoutRef.current = {
           resolve,
           reject,
@@ -564,20 +639,36 @@ export default function App() {
       }
 
       const orderData = snapshot.data() as Partial<Order>;
-      await updateDoc(orderRef, { status });
+      await updateDoc(orderRef, {
+        status,
+        ...buildEstimatedDeliveryFields(status),
+        updatedAt: serverTimestamp(),
+      });
 
       if (orderData.userId) {
-        await createNotification({
-          userId: orderData.userId,
-          role: 'user',
-          type: 'order_status_changed',
-          title: 'Order status updated',
-          message: `Your order ${orderId} is now ${getOrderStatusLabel(status).toLowerCase()}.`,
-          orderId,
-        });
+        try {
+          await createNotification({
+            userId: orderData.userId,
+            role: 'user',
+            type: 'order_status_changed',
+            title: 'Order status updated',
+            message: `Your order ${orderId} is now ${getOrderStatusLabel(status).toLowerCase()}.`,
+            orderId,
+          });
+        } catch (notificationError) {
+          console.error('Order status updated, but notification creation failed:', {
+            orderId,
+            status,
+            notificationError,
+          });
+        }
       }
     } catch (error) {
-      console.error('Failed to update order status:', error);
+      console.error('Failed to update order status in Firestore:', {
+        orderId,
+        status,
+        error,
+      });
       throw error;
     }
   };
@@ -673,6 +764,14 @@ export default function App() {
   };
 
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const activeOrders = useMemo(
+    () => userOrders.filter((order) => ACTIVE_ORDER_STATUSES.includes(order.status)),
+    [userOrders]
+  );
+  const latestActiveOrder = activeOrders[0] ?? null;
+  const trackedOrder = trackedOrderId
+    ? userOrders.find((order) => order.id === trackedOrderId) ?? latestActiveOrder
+    : latestActiveOrder;
   const favoriteMenuItems = useMemo(
     () => menuItems.filter((item) => favoriteProductIds.includes(item.id)),
     [favoriteProductIds, menuItems]
@@ -738,6 +837,12 @@ export default function App() {
       <Navbar
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
+        activeOrderCount={activeOrders.length}
+        onOpenTracking={() => {
+          if (!latestActiveOrder) return;
+          setTrackedOrderId(latestActiveOrder.id);
+          setTrackingDrawerOpen(true);
+        }}
         activeView={activeView}
         onChangeView={handleChangeView}
         onScrollTo={handleScrollTo}
@@ -838,6 +943,22 @@ export default function App() {
         onRemoveItem={handleRemoveCartItem}
         onClearCart={handleClearCart}
         onPlaceOrder={handlePlaceOrder}
+        onOrderPlaced={(orderId) => {
+          setIsCartOpen(false);
+          setTrackedOrderId(orderId);
+          setTrackingDrawerOpen(true);
+        }}
+      />
+
+      <OrderTrackingDrawer
+        isOpen={trackingDrawerOpen}
+        order={trackedOrder}
+        loading={ordersLoading}
+        onClose={() => setTrackingDrawerOpen(false)}
+        onOpenProfile={() => {
+          setTrackingDrawerOpen(false);
+          handleChangeView('profile');
+        }}
       />
 
       <AuthModal

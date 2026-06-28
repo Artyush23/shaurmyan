@@ -63,6 +63,9 @@ function mapFirestoreOrder(docId: string, data: Record<string, unknown>): Order 
     status: normalizeOrderStatus(data.status),
     createdAt,
     notes: data.notes ? String(data.notes) : undefined,
+    estimatedMinutesMin: typeof data.estimatedMinutesMin === 'number' ? data.estimatedMinutesMin : null,
+    estimatedMinutesMax: typeof data.estimatedMinutesMax === 'number' ? data.estimatedMinutesMax : null,
+    estimatedArrivalTime: typeof data.estimatedArrivalTime === 'string' ? data.estimatedArrivalTime : null,
   };
 }
 
@@ -411,6 +414,7 @@ export default function AdminPanel({
       accepted: 0,
       preparing: 0,
       ready: 0,
+      on_the_way: 0,
       delivered: 0,
       cancelled: 0,
     });
@@ -547,7 +551,12 @@ export default function AdminPanel({
 
     try {
       await onUpdateOrderStatus(orderId, status);
-    } catch {
+    } catch (error) {
+      console.error('Admin order status update failed:', {
+        orderId,
+        status,
+        error,
+      });
       setOrdersError('Could not update order status. Please try again.');
     } finally {
       setUpdatingOrderId(null);
@@ -1340,19 +1349,12 @@ export default function AdminPanel({
               ) : (
               visibleOrders.map(ord => {
                 // Color mapping helper
-                const statusLabels: { [key: string]: { label: string; class: string } } = {
-                  new: { label: 'ახალი 🚀', class: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
-                  preparing: { label: 'მზადდება 👨‍🍳', class: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
-                  delivering: { label: 'გზაშია 🛵', class: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
-                  delivered: { label: 'ჩაბარდა 🥗', class: 'bg-green-500/10 text-green-400 border-green-500/20' },
-                  cancelled: { label: 'გაუქმდა ❌', class: 'bg-red-500/10 text-red-400 border-red-500/20' },
-                };
-
                 const stat = {
                   label: getOrderStatusLabel(ord.status),
                   class: getOrderStatusClass(ord.status),
                 };
                 const nextStatus = getNextOrderStatus(ord.status);
+                const isDeliveryOrder = Boolean((ord.customerAddress || ord.address || '').trim());
 
                 return (
                   <div
@@ -1421,7 +1423,7 @@ export default function AdminPanel({
                                 onClick={() => guardedUpdateOrderStatus(ord.id, 'accepted')}
                                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
                               >
-                                დამუშავება ▶
+                                Accept order
                               </button>
                             )}
                             {ord.status === 'accepted' && (
@@ -1429,23 +1431,45 @@ export default function AdminPanel({
                                 onClick={() => guardedUpdateOrderStatus(ord.id, 'preparing')}
                                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
                               >
-                                Mark Preparing
+                                Start preparing
                               </button>
                             )}
                             {ord.status === 'preparing' && (
-                              <button
-                                onClick={() => guardedUpdateOrderStatus(ord.id, 'ready')}
-                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
-                              >
-                                გაგზავნა ▶
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => guardedUpdateOrderStatus(ord.id, 'ready')}
+                                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
+                                >
+                                  Mark as ready
+                                </button>
+                                {!isDeliveryOrder && (
+                                  <button
+                                    onClick={() => guardedUpdateOrderStatus(ord.id, 'delivered')}
+                                    className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
+                                  >
+                                    Mark as delivered
+                                  </button>
+                                )}
+                              </>
                             )}
                             {ord.status === 'ready' && (
+                              <button
+                                onClick={() => guardedUpdateOrderStatus(ord.id, isDeliveryOrder ? 'on_the_way' : 'delivered')}
+                                className={`px-3 py-1.5 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer ${
+                                  isDeliveryOrder
+                                    ? 'bg-orange-600 hover:bg-orange-700'
+                                    : 'bg-green-600 hover:bg-green-700'
+                                }`}
+                              >
+                                {isDeliveryOrder ? 'Send on the way' : 'Mark as delivered'}
+                              </button>
+                            )}
+                            {ord.status === 'on_the_way' && (
                               <button
                                 onClick={() => guardedUpdateOrderStatus(ord.id, 'delivered')}
                                 className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-stone-950 font-black text-[10px] rounded-lg transition-colors duration-200 cursor-pointer"
                               >
-                                ჩაბარება ✔
+                                Mark as delivered
                               </button>
                             )}
                             <button
@@ -1457,13 +1481,20 @@ export default function AdminPanel({
                             </button>
                           </>
                         ) : (
-                          <button
-                            onClick={() => guardedDeleteOrder(ord.id)}
-                            className="p-2 hover:bg-red-600 hover:text-white border border-stone-800 text-stone-500 rounded-lg transition-all duration-200 cursor-pointer"
-                            title="ამოშლა არქივიდან"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {ord.status === 'delivered' && (
+                              <span className="rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-green-400">
+                                Completed
+                              </span>
+                            )}
+                            <button
+                              onClick={() => guardedDeleteOrder(ord.id)}
+                              className="p-2 hover:bg-red-600 hover:text-white border border-stone-800 text-stone-500 rounded-lg transition-all duration-200 cursor-pointer"
+                              title="ამოშლა არქივიდან"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
