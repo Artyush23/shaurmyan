@@ -5,6 +5,7 @@ import {
   Bell,
   CreditCard,
   Edit3,
+  Heart,
   Landmark,
   Mail,
   Loader2,
@@ -22,7 +23,7 @@ import {
 import { db, getAuthErrorMessage, updateUserProfile } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { clearSavedCard, getSavedCard, type SavedCard } from '../utils/cardPayment';
-import type { Notification, Order } from '../types';
+import type { MenuItem, Notification, Order } from '../types';
 import { getOrderStatusClass, getOrderStatusLabel, normalizeOrderStatus } from '../utils/orders';
 import { useTranslation } from 'react-i18next';
 
@@ -103,12 +104,16 @@ function splitDisplayName(displayName: string | null | undefined) {
 }
 
 interface UserProfileProps {
+  favoriteItems?: MenuItem[];
+  onRemoveFavorite?: (productId: string) => Promise<void>;
   onSignedOut?: () => void;
   onOpenAdmin?: () => void;
   onOpenBanking?: () => void;
 }
 
 export default function UserProfile({
+  favoriteItems = [],
+  onRemoveFavorite,
   onSignedOut,
   onOpenAdmin,
   onOpenBanking,
@@ -455,6 +460,61 @@ export default function UserProfile({
               {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
               {t('profile.signOut')}
             </button>
+          </section>
+
+          <section className="rounded-3xl border border-stone-800 bg-stone-950/85 p-4 shadow-xl sm:p-6 xl:col-span-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-amber-500">
+                  Favorites
+                </p>
+                <h2 className="mt-1 text-xl font-black text-white">Saved Products</h2>
+                <p className="mt-1 text-xs text-stone-500">
+                  {favoriteItems.length} favorite{favoriteItems.length === 1 ? '' : 's'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-500">
+                <Heart className="h-5 w-5" />
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {favoriteItems.length > 0 ? (
+                favoriteItems.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-stone-800 bg-stone-900 p-3">
+                    <div className="flex items-center gap-3">
+                      <img
+                        referrerPolicy="no-referrer"
+                        src={item.image}
+                        alt={item.name}
+                        className="h-16 w-16 shrink-0 rounded-2xl bg-stone-800 object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-black text-white">{item.name}</p>
+                        <p className="mt-1 text-[10px] font-mono uppercase tracking-[0.16em] text-amber-500">
+                          {item.category}
+                        </p>
+                        <p className="mt-1 text-sm font-black text-stone-200">{formatMoney(item.price)}</p>
+                      </div>
+                      {onRemoveFavorite && (
+                        <button
+                          type="button"
+                          onClick={() => void onRemoveFavorite(item.id)}
+                          className="shrink-0 cursor-pointer rounded-xl border border-red-500/20 bg-red-500/10 p-2 text-red-300 transition-colors hover:bg-red-500/15"
+                          aria-label="Remove favorite"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-2xl border border-dashed border-stone-700 bg-stone-900/70 p-4 text-sm text-stone-400 sm:col-span-2">
+                  Favorite products from the menu will appear here.
+                </p>
+              )}
+            </div>
           </section>
 
           <section className="rounded-3xl border border-stone-800 bg-stone-950/85 p-4 shadow-xl sm:p-6 xl:col-span-4">

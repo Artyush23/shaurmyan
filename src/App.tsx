@@ -1,14 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import {
   collection,
   doc,
   getDoc,
   onSnapshot,
+  query,
   setDoc,
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  where,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { MenuItem, CartItem, Order, Review } from './types';
@@ -105,6 +107,7 @@ export default function App() {
   });
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
+  const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
 
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     const saved = localStorage.getItem('shaurmyan_cart');
@@ -125,6 +128,35 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('shaurmyan_reviews', JSON.stringify(reviews));
   }, [reviews]);
+
+  useEffect(() => {
+    if (!user) {
+      setFavoriteProductIds([]);
+      return;
+    }
+
+    const favoritesQuery = query(
+      collection(db, 'favorites'),
+      where('userId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(
+      favoritesQuery,
+      (snapshot) => {
+        setFavoriteProductIds(
+          snapshot.docs
+            .map((favoriteDoc) => String(favoriteDoc.data().productId ?? ''))
+            .filter(Boolean)
+        );
+      },
+      (error) => {
+        console.error('Failed to load favorites:', error);
+        setFavoriteProductIds([]);
+      }
+    );
+
+    return unsubscribe;
+  }, [user]);
 
   useEffect(() => {
     setReviewsLoading(true);
@@ -282,6 +314,28 @@ export default function App() {
           },
       { merge: true }
     );
+  };
+
+  const handleToggleFavorite = async (productId: string) => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    const favoriteId = `${user.uid}_${productId}`;
+    const favoriteRef = doc(db, 'favorites', favoriteId);
+
+    if (favoriteProductIds.includes(productId)) {
+      await deleteDoc(favoriteRef);
+      return;
+    }
+
+    await setDoc(favoriteRef, {
+      id: favoriteId,
+      userId: user.uid,
+      productId,
+      createdAt: serverTimestamp(),
+    });
   };
 
   const createNotification = async (input: {
@@ -619,6 +673,10 @@ export default function App() {
   };
 
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const favoriteMenuItems = useMemo(
+    () => menuItems.filter((item) => favoriteProductIds.includes(item.id)),
+    [favoriteProductIds, menuItems]
+  );
   const siteUrl = getSiteUrl();
   const shareImageUrl = getShareImageUrl();
   const schemaJsonLd = getSchemaJsonLd();
@@ -697,7 +755,9 @@ export default function App() {
               reviews={reviews}
               currentUserId={user?.uid ?? null}
               isAuthenticated={Boolean(user)}
+              favoriteProductIds={favoriteProductIds}
               onRequireAuth={() => setAuthModalOpen(true)}
+              onToggleFavorite={handleToggleFavorite}
               onAddToCart={handleAddToCart}
               onSaveReview={handleSaveProductReview}
               onDeleteReview={handleDeleteReview}
@@ -740,6 +800,8 @@ export default function App() {
           </RequireAdmin>
         ) : activeView === 'profile' && user ? (
           <UserProfile
+            favoriteItems={favoriteMenuItems}
+            onRemoveFavorite={handleToggleFavorite}
             onSignedOut={handleSignedOut}
             onOpenAdmin={() => handleChangeView('admin')}
             onOpenBanking={handleOpenBanking}
