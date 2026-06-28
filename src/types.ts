@@ -81,6 +81,13 @@ export interface Review {
   approved?: boolean;
 }
 
+export interface Favorite {
+  id: string;
+  userId: string;
+  productId: string;
+  createdAt: string;
+}
+
 export interface Notification {
   id: string;
   userId: string;
